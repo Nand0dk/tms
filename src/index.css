@@ -1,0 +1,24 @@
+@import "tailwindcss";
+
+@media print {
+  .app-chrome,
+  .no-print {
+    display: none !important;
+  }
+
+  .label-sheet {
+    position: static !important;
+    inset: auto !important;
+    overflow: visible !important;
+    height: auto !important;
+    background: white !important;
+  }
+
+  .label {
+    width: 100mm !important;
+    height: 60mm !important;
+    max-width: none !important;
+    break-inside: avoid;
+    page-break-inside: avoid;
+  }
+}
