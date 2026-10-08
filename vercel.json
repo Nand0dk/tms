@@ -7,7 +7,7 @@
   ],
   "functions": {
     "api/[...path].js": {
-      "runtime": "nodejs22.x"
+      "runtime": "@vercel/node"
     }
   }
 }
