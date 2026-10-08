@@ -57,13 +57,24 @@ function readBody(req) {
   })
 }
 
+function normalizePath(pathname) {
+  let path = pathname || "/"
+  if (path.length > 1 && path.endsWith("/")) path = path.slice(0, -1)
+  while (path.startsWith("/api/api/")) path = `/api/${path.slice("/api/api/".length)}`
+  return path
+}
+
 function requestPath(req) {
   const url = new URL(req.url ?? "/", "http://local")
-  if (url.pathname.startsWith("/api/")) return url.pathname
-  const path = req.query?.path
-  const parts = Array.isArray(path) ? path : typeof path === "string" ? [path] : []
-  if (parts.length > 0) return `/api/${parts.join("/")}`
-  return url.pathname
+  let pathname = normalizePath(url.pathname)
+  if (!pathname.startsWith("/api")) {
+    const path = req.query?.path
+    const parts = (Array.isArray(path) ? path : typeof path === "string" ? [path] : [])
+      .flatMap((part) => String(part).split("/"))
+      .filter(Boolean)
+    if (parts.length > 0) pathname = normalizePath(`/api/${parts.join("/")}`)
+  }
+  return pathname
 }
 
 function queryValue(req, name) {
