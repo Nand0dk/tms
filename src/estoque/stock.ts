@@ -33,7 +33,10 @@ export function matchingBoxes(product: Product, term: string): StockBox[] | null
 
   const scanned = boxIdFromQuery(term)?.toLowerCase()
   const boxes = productBoxes(product).filter(
-    (box) => box.id.toLowerCase() === query || box.id.toLowerCase() === scanned,
+    (box) =>
+      box.lote.toLowerCase().includes(query) ||
+      box.id.toLowerCase() === query ||
+      box.id.toLowerCase() === scanned,
   )
   return boxes.length > 0 ? boxes : null
 }
