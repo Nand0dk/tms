@@ -233,7 +233,11 @@ async function withTransaction(db, run) {
     }
     throw error
   } finally {
-    tx.close()
+    try {
+      tx.close()
+    } catch {
+      // commit()/rollback() already close the stream on Turso.
+    }
   }
 }
 
@@ -377,9 +381,21 @@ export async function deleteProduct(db, input) {
   const codigo = text(input.codigo)
   if (!codigo) throw new ApiError("Produto não encontrado.")
   return withTransaction(db, async (tx) => {
-    const result = await tx.run("DELETE FROM products WHERE lower(codigo) = lower(?)", codigo)
-    if (result.changes === 0) throw new ApiError("Produto não encontrado.")
-    await logEvent(tx, input, `${eventActor(input)} apagou o produto ${codigo}.`)
+    const existing = await tx.get(
+      "SELECT codigo FROM products WHERE lower(codigo) = lower(?)",
+      codigo,
+    )
+    if (!existing) throw new ApiError("Produto não encontrado.")
+    // Explicit child deletes: Turso transaction streams may not enforce CASCADE.
+    await tx.run(
+      "DELETE FROM boxes WHERE lot_id IN (SELECT id FROM lots WHERE product_codigo = ?)",
+      existing.codigo,
+    )
+    await tx.run("DELETE FROM lots WHERE product_codigo = ?", existing.codigo)
+    await tx.run("DELETE FROM products WHERE codigo = ?", existing.codigo)
+    const still = await tx.get("SELECT 1 AS ok FROM products WHERE codigo = ?", existing.codigo)
+    if (still) throw new ApiError("Não foi possível apagar o produto.")
+    await logEvent(tx, input, `${eventActor(input)} apagou o produto ${existing.codigo}.`)
     return readState(tx)
   })
 }
@@ -390,16 +406,20 @@ export async function deleteLot(db, input) {
   const numero = text(input.numero)
   if (!productCodigo || !numero) throw new ApiError("Lote não encontrado.")
   return withTransaction(db, async (tx) => {
-    const result = await tx.run(
-      "DELETE FROM lots WHERE product_codigo = ? AND lower(numero) = lower(?)",
+    const existing = await tx.get(
+      "SELECT id, product_codigo, numero FROM lots WHERE product_codigo = ? AND lower(numero) = lower(?)",
       productCodigo,
       numero,
     )
-    if (result.changes === 0) throw new ApiError("Lote não encontrado.")
+    if (!existing) throw new ApiError("Lote não encontrado.")
+    await tx.run("DELETE FROM boxes WHERE lot_id = ?", existing.id)
+    await tx.run("DELETE FROM lots WHERE id = ?", existing.id)
+    const still = await tx.get("SELECT 1 AS ok FROM lots WHERE id = ?", existing.id)
+    if (still) throw new ApiError("Não foi possível apagar o lote.")
     await logEvent(
       tx,
       input,
-      `${eventActor(input)} apagou o lote ${numero} do produto ${productCodigo}.`,
+      `${eventActor(input)} apagou o lote ${existing.numero} do produto ${existing.product_codigo}.`,
     )
     return readState(tx)
   })
@@ -436,7 +456,16 @@ export async function deleteWarehouse(db, input) {
     const warehouse = await warehouseByCode(tx, codigo)
     if (!warehouse) throw new ApiError("Armazém não encontrado.")
     await clearBoxesInWarehouse(tx, warehouse.codigo)
+    await tx.run(
+      `DELETE FROM positions WHERE shelf_id IN (
+         SELECT id FROM shelves WHERE warehouse_codigo = ?
+       )`,
+      warehouse.codigo,
+    )
+    await tx.run("DELETE FROM shelves WHERE warehouse_codigo = ?", warehouse.codigo)
     await tx.run("DELETE FROM warehouses WHERE codigo = ?", warehouse.codigo)
+    const still = await tx.get("SELECT 1 AS ok FROM warehouses WHERE codigo = ?", warehouse.codigo)
+    if (still) throw new ApiError("Não foi possível apagar o armazém.")
     await logEvent(tx, input, `${eventActor(input)} apagou o armazém ${warehouse.codigo}.`)
     return readState(tx)
   })
@@ -463,7 +492,10 @@ export async function deleteShelf(db, input) {
       warehouse.codigo,
       positions.map((position) => position.codigo),
     )
+    await tx.run("DELETE FROM positions WHERE shelf_id = ?", shelf.id)
     await tx.run("DELETE FROM shelves WHERE id = ?", shelf.id)
+    const still = await tx.get("SELECT 1 AS ok FROM shelves WHERE id = ?", shelf.id)
+    if (still) throw new ApiError("Não foi possível apagar a prateleira.")
     await logEvent(
       tx,
       input,
@@ -493,6 +525,8 @@ export async function deletePosition(db, input) {
     if (!position) throw new ApiError("Posição não encontrada.")
     await clearBoxesAtPositions(tx, warehouse.codigo, [position.codigo])
     await tx.run("DELETE FROM positions WHERE id = ?", position.id)
+    const still = await tx.get("SELECT 1 AS ok FROM positions WHERE id = ?", position.id)
+    if (still) throw new ApiError("Não foi possível apagar a posição.")
     await logEvent(
       tx,
       input,
@@ -502,14 +536,14 @@ export async function deletePosition(db, input) {
   })
 }
 
-async function updateBoxes(boxIds, apply) {
+async function updateBoxes(tx, boxIds, apply) {
   const ids = idList(boxIds)
   if (ids.length === 0) throw new ApiError("Adicione ao menos uma caixa.")
-  let changed = 0
   for (const id of ids) {
-    changed += (await apply(id)).changes
+    const box = await tx.get("SELECT id FROM boxes WHERE lower(id) = lower(?)", id)
+    if (!box) throw new ApiError("Caixa não encontrada.")
+    await apply(box.id)
   }
-  if (changed !== ids.length) throw new ApiError("Caixa não encontrada.")
 }
 
 export async function setPositions(db, input) {
@@ -518,9 +552,9 @@ export async function setPositions(db, input) {
   if (!posicao) throw new ApiError("Informe a posição.")
   return withTransaction(db, async (tx) => {
     const warehouse = armazemCodigo ? await requireWarehouse(tx, armazemCodigo) : null
-    await updateBoxes(input.boxIds, (id) =>
+    await updateBoxes(tx, input.boxIds, (id) =>
       tx.run(
-        "UPDATE boxes SET posicao = ?, armazem_codigo = ?, coletada = 0, expedida = 0 WHERE lower(id) = lower(?)",
+        "UPDATE boxes SET posicao = ?, armazem_codigo = ?, coletada = 0, expedida = 0 WHERE id = ?",
         posicao,
         warehouse,
         id,
@@ -538,12 +572,17 @@ export async function setPositions(db, input) {
 
 export async function collectBoxes(db, input) {
   return withTransaction(db, async (tx) => {
-    await updateBoxes(input.boxIds, (id) =>
-      tx.run(
-        "UPDATE boxes SET coletada = 1, posicao = NULL, armazem_codigo = NULL WHERE lower(id) = lower(?) AND expedida = 0 AND posicao IS NOT NULL AND coletada = 0",
+    await updateBoxes(tx, input.boxIds, async (id) => {
+      const eligible = await tx.get(
+        "SELECT id FROM boxes WHERE id = ? AND expedida = 0 AND posicao IS NOT NULL AND coletada = 0",
         id,
-      ),
-    )
+      )
+      if (!eligible) throw new ApiError("Caixa não encontrada.")
+      await tx.run(
+        "UPDATE boxes SET coletada = 1, posicao = NULL, armazem_codigo = NULL WHERE id = ?",
+        id,
+      )
+    })
     await logEvent(tx, input, `${eventActor(input)} coletou as caixas ${boxIdsText(input.boxIds)}.`)
     return readState(tx)
   })
@@ -551,12 +590,14 @@ export async function collectBoxes(db, input) {
 
 export async function shipBoxes(db, input) {
   return withTransaction(db, async (tx) => {
-    await updateBoxes(input.boxIds, (id) =>
-      tx.run(
-        "UPDATE boxes SET expedida = 1, coletada = 1 WHERE lower(id) = lower(?) AND coletada = 1 AND expedida = 0",
+    await updateBoxes(tx, input.boxIds, async (id) => {
+      const eligible = await tx.get(
+        "SELECT id FROM boxes WHERE id = ? AND coletada = 1 AND expedida = 0",
         id,
-      ),
-    )
+      )
+      if (!eligible) throw new ApiError("Caixa não encontrada.")
+      await tx.run("UPDATE boxes SET expedida = 1, coletada = 1 WHERE id = ?", id)
+    })
     await logEvent(tx, input, `${eventActor(input)} expediu as caixas ${boxIdsText(input.boxIds)}.`)
     return readState(tx)
   })
@@ -783,18 +824,17 @@ export async function setUserAreas(db, input) {
       coleta: flag(input.coleta),
       expedicao: flag(input.expedicao),
     }
-    const result = await tx.run(
+    await tx.run(
       `UPDATE users
        SET recebimento = ?, estoque = ?, armazem = ?, coleta = ?, expedicao = ?
-       WHERE lower(usuario) = lower(?)`,
+       WHERE usuario = ?`,
       next.recebimento,
       next.estoque,
       next.armazem,
       next.coleta,
       next.expedicao,
-      usuario,
+      current.usuario,
     )
-    if (result.changes === 0) throw new ApiError("Usuário não encontrado.")
     const labels = {
       recebimento: "Recebimento",
       estoque: "Estoque",
@@ -821,9 +861,15 @@ export async function removeUser(db, input) {
   if (!usuario) throw new ApiError("Usuário não encontrado.")
   if (isAdmin(usuario)) throw new ApiError("O usuário ADM01 não pode ser removido.")
   return withTransaction(db, async (tx) => {
-    const result = await tx.run("DELETE FROM users WHERE lower(usuario) = lower(?)", usuario)
-    if (result.changes === 0) throw new ApiError("Usuário não encontrado.")
-    await logEvent(tx, input, `${eventActor(input)} removeu o usuário ${usuario}.`)
+    const existing = await tx.get(
+      "SELECT usuario FROM users WHERE lower(usuario) = lower(?)",
+      usuario,
+    )
+    if (!existing) throw new ApiError("Usuário não encontrado.")
+    await tx.run("DELETE FROM users WHERE usuario = ?", existing.usuario)
+    const still = await tx.get("SELECT 1 AS ok FROM users WHERE usuario = ?", existing.usuario)
+    if (still) throw new ApiError("Não foi possível remover o usuário.")
+    await logEvent(tx, input, `${eventActor(input)} removeu o usuário ${existing.usuario}.`)
     return listUsers(tx, { actor: "ADM01" })
   })
 }
