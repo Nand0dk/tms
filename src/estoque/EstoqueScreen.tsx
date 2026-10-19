@@ -123,7 +123,7 @@ function StockList({
                         <p>
                           {box.id} · lote {box.lote}
                           {box.expedida
-                            ? " · Expedida"
+                            ? " · Enviada"
                             : box.coletada
                               ? " · Coletada"
                               : box.posicao

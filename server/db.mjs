@@ -629,26 +629,34 @@ export async function shipBoxes(db, input) {
   return withTransaction(db, async (tx) => {
     await updateBoxes(tx, ids, async (id) => {
       const eligible = await tx.get(
-        "SELECT id FROM boxes WHERE id = ? AND expedida = 0 AND (coletada = 1 OR (posicao IS NOT NULL AND posicao != ''))",
+        `SELECT id FROM boxes
+         WHERE id = ? AND expedida = 0
+           AND (
+             coletada = 1
+             OR (posicao IS NOT NULL AND posicao != '')
+             OR (nota_fiscal IS NOT NULL AND nota_fiscal != '')
+           )`,
         id,
       )
       if (!eligible) throw new ApiError("Caixa não encontrada.")
       await tx.run(
-        "UPDATE boxes SET expedida = 1, coletada = 1, posicao = NULL, armazem_codigo = NULL, nota_fiscal = ? WHERE id = ?",
+        `UPDATE boxes
+         SET expedida = 1, coletada = 1, posicao = '', armazem_codigo = NULL, nota_fiscal = ?
+         WHERE id = ?`,
         notaFiscal,
         id,
       )
     })
     await upsertNotaFiscal(tx, {
       notaFiscal,
-      posicao: text(input.posicao),
+      posicao: "",
       quantidade: ids.length,
       actor: eventActor(input),
     })
     await logEvent(
       tx,
       input,
-      `${eventActor(input)} expediu as caixas ${boxIdsText(ids)} na nota fiscal ${notaFiscal}.`,
+      `${eventActor(input)} enviou as caixas ${boxIdsText(ids)} na nota fiscal ${notaFiscal}.`,
     )
     return readState(tx)
   })
@@ -674,36 +682,84 @@ export async function allocateBoxes(db, input) {
   const notaFiscal = text(input.notaFiscal)
   const quantidade = wholeCount(input.quantidade)
   const posicao = text(input.posicao)
-  const ids = idList(input.boxIds)
+  const armazemCodigo = text(input.armazemCodigo)
   if (!notaFiscal) throw new ApiError("Informe a nota fiscal.")
   if (!posicao) throw new ApiError("Informe a posição.")
-  if (quantidade === null) throw new ApiError("Informe a quantidade de caixas.")
-  if (ids.length === 0) throw new ApiError("Adicione ao menos uma caixa.")
-  if (quantidade !== ids.length) {
-    throw new ApiError("A quantidade de caixas não confere com a lista.")
+  if (quantidade === null || quantidade < 1) {
+    throw new ApiError("Informe a quantidade de caixas.")
   }
   return withTransaction(db, async (tx) => {
-    await updateBoxes(tx, ids, async (id) => {
-      const eligible = await tx.get(
-        `SELECT id FROM boxes
-         WHERE id = ? AND expedida = 0
-           AND posicao IS NOT NULL AND lower(posicao) = lower(?)`,
-        id,
-        posicao,
+    const warehouse = armazemCodigo ? await requireWarehouse(tx, armazemCodigo) : null
+    const productCodigo = `NF-${normalizeNotaFiscal(notaFiscal)}`.slice(0, 48) || "NF"
+    const productNome = `Nota ${notaFiscal}`
+    const existingProduct = await tx.get(
+      "SELECT codigo FROM products WHERE lower(codigo) = lower(?)",
+      productCodigo,
+    )
+    if (!existingProduct) {
+      await tx.run(
+        "INSERT INTO products (codigo, nome, unidade) VALUES (?, ?, ?)",
+        productCodigo,
+        productNome,
+        "CX",
       )
-      if (!eligible) throw new ApiError("Caixa não encontrada na posição.")
-      await tx.run("UPDATE boxes SET nota_fiscal = ? WHERE id = ?", notaFiscal, id)
-    })
+    }
+    let lotNumero = notaFiscal
+    let suffix = 2
+    while (
+      await tx.get(
+        "SELECT 1 AS ok FROM lots WHERE product_codigo = ? AND lower(numero) = lower(?)",
+        productCodigo,
+        lotNumero,
+      )
+    ) {
+      lotNumero = `${notaFiscal}-${suffix}`
+      suffix += 1
+    }
+    const ordemRow = await tx.get(
+      "SELECT COALESCE(MAX(ordem), 0) + 1 AS next FROM lots WHERE product_codigo = ?",
+      productCodigo,
+    )
+    const lot = await tx.run(
+      "INSERT INTO lots (product_codigo, numero, quantidade, validade, ordem) VALUES (?, ?, ?, ?, ?)",
+      productCodigo,
+      lotNumero,
+      quantidade,
+      "",
+      Number(ordemRow.next),
+    )
+    const lotId = lot.lastInsertRowid
+    const meta = await tx.get("SELECT value FROM meta WHERE key = 'next_box'")
+    const nextBox = Number(meta.value)
+    const ids = []
+    for (let index = 0; index < quantidade; index += 1) {
+      const id = formatBoxId(nextBox + index)
+      ids.push(id)
+      await tx.run(
+        `INSERT INTO boxes
+         (id, lot_id, idx, total, posicao, armazem_codigo, coletada, expedida, nota_fiscal)
+         VALUES (?, ?, ?, ?, ?, ?, 0, 0, ?)`,
+        id,
+        lotId,
+        index + 1,
+        quantidade,
+        posicao,
+        warehouse,
+        notaFiscal,
+      )
+    }
+    await tx.run("UPDATE meta SET value = ? WHERE key = 'next_box'", String(nextBox + quantidade))
     await upsertNotaFiscal(tx, {
       notaFiscal,
       posicao,
-      quantidade: ids.length,
+      quantidade,
       actor: eventActor(input),
     })
+    const place = warehouse ? `${posicao} do armazém ${warehouse}` : posicao
     await logEvent(
       tx,
       input,
-      `${eventActor(input)} alocou as caixas ${boxIdsText(ids)} na nota fiscal ${notaFiscal} na posição ${posicao}.`,
+      `${eventActor(input)} recebeu e alocou as caixas ${boxIdsText(ids)} na nota fiscal ${notaFiscal} na posição ${place}.`,
     )
     return readState(tx)
   })
@@ -1115,9 +1171,14 @@ export async function lookupNotaFiscal(db, input) {
     historyHit?.texto?.match(/nota fiscal\s+(.+?)\.?$/i)?.[1]?.trim() ||
     notaKey
 
+  const allShipped =
+    boxes.length > 0 && boxes.every((box) => Number(box.expedida) === 1)
+  const currentPosicao =
+    allShipped || !notaRow?.posicao ? null : notaRow.posicao
+
   return {
     notaFiscal: resolvedNota,
-    posicao: notaRow?.posicao || null,
+    posicao: currentPosicao,
     quantidade: notaRow?.quantidade ?? boxes.length,
     expedidaPor: notaRow?.actor || historyHit?.actor || null,
     expedidaEm: notaRow?.criado_em || historyHit?.criado_em || null,
@@ -1126,13 +1187,14 @@ export async function lookupNotaFiscal(db, input) {
         (event) =>
           typeof event.texto === "string" &&
           event.texto.includes(box.id) &&
-          event.texto.includes("posição"),
+          (event.texto.includes("posição") || event.texto.includes("alocou")),
       )
       const posicaoNoHistorico = placeEvent
         ? positionFromHistoryText(placeEvent.texto)
         : null
+      const shipped = Number(box.expedida) === 1
       let ondeEsta = "Sem posição"
-      if (box.expedida) ondeEsta = "Expedida"
+      if (shipped) ondeEsta = "Enviada"
       else if (box.coletada) ondeEsta = "Coletada"
       else if (box.posicao) {
         ondeEsta = box.armazem_codigo
@@ -1143,7 +1205,9 @@ export async function lookupNotaFiscal(db, input) {
         id: box.id,
         produto: box.produto,
         ondeEsta,
-        posicao: box.posicao || posicaoNoHistorico || notaRow?.posicao || null,
+        posicao: shipped
+          ? posicaoNoHistorico
+          : box.posicao || posicaoNoHistorico || notaRow?.posicao || null,
         salvaPor: placeEvent?.actor ?? null,
         salvaEm: placeEvent?.criado_em ?? null,
       }

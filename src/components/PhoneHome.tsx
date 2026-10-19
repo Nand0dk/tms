@@ -132,12 +132,12 @@ export function PhoneHome() {
   }
 
   function allocateBoxes(
-    boxIds: string[],
     notaFiscal: string,
     quantidade: number,
     posicao: string,
+    armazemCodigo?: string,
   ) {
-    return saveAllocation(actor, boxIds, notaFiscal, quantidade, posicao).then(apply)
+    return saveAllocation(actor, notaFiscal, quantidade, posicao, armazemCodigo).then(apply)
   }
 
   function shipBoxes(

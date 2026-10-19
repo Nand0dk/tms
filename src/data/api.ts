@@ -101,10 +101,11 @@ export function saveShipment(
 
 export function saveAllocation(
   actor: string,
-  boxIds: string[],
   notaFiscal: string,
   quantidade: number,
   posicao: string,
+  armazemCodigo?: string,
+  boxIds: string[] = [],
 ) {
   return send("/api/allocations", {
     actor,
@@ -112,6 +113,7 @@ export function saveAllocation(
     notaFiscal,
     quantidade,
     posicao,
+    armazemCodigo,
   })
 }
 

@@ -655,6 +655,7 @@ function boxesInWarehouse(products: Product[], codigo: string) {
       lot.boxes
         .filter(
           (box) =>
+            !box.expedida &&
             box.armazemCodigo?.toLowerCase() === codigo.toLowerCase() &&
             box.posicao,
         )

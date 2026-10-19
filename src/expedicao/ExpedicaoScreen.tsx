@@ -29,10 +29,10 @@ export function ExpedicaoScreen({
 }: {
   products: Product[]
   onAllocate: (
-    boxIds: string[],
     notaFiscal: string,
     quantidade: number,
     posicao: string,
+    armazemCodigo?: string,
   ) => void | Promise<void>
   onShip: (
     boxIds: string[],
@@ -79,7 +79,6 @@ export function ExpedicaoScreen({
   if (view === "alocar") {
     return (
       <AlocarForm
-        products={products}
         onBack={() => setView("menu")}
         onAllocate={onAllocate}
         onDone={() => setView("menu")}
@@ -248,45 +247,36 @@ function BuscarNotaFiscal({
 }
 
 function AlocarForm({
-  products,
   onBack,
   onAllocate,
   onDone,
 }: {
-  products: Product[]
   onBack: () => void
   onAllocate: (
-    boxIds: string[],
     notaFiscal: string,
     quantidade: number,
     posicao: string,
+    armazemCodigo?: string,
   ) => void | Promise<void>
   onDone: () => void
 }) {
   const [notaFiscal, setNotaFiscal] = useState("")
   const [quantidade, setQuantidade] = useState("")
   const [posicao, setPosicao] = useState("")
-  const [pending, setPending] = useState<PendingBox[]>([])
+  const [armazemCodigo, setArmazemCodigo] = useState("")
   const [error, setError] = useState<string | null>(null)
   const [saving, setSaving] = useState(false)
   const [saved, setSaved] = useState<string | null>(null)
 
   function loadFromShelf(code: string) {
-    const position = resolvePosition(code)
+    const parsed = positionFromSearch(code.trim())
+    const position = parsed?.codigo || code.trim()
     if (!position) {
       setError("Informe a posição.")
       return
     }
-    const found = boxesAtPosition(products, position)
-    if (found.length === 0) {
-      setError("Nenhuma caixa nesta posição.")
-      setPosicao(position)
-      setPending([])
-      return
-    }
     setPosicao(position)
-    setPending(found)
-    setQuantidade(String(found.length))
+    setArmazemCodigo(parsed?.armazem ?? "")
     setError(null)
   }
 
@@ -298,44 +288,29 @@ function AlocarForm({
     }
     const invoice = notaFiscal.trim()
     const count = Number(quantidade.trim())
-    const position = resolvePosition(posicao)
-    let next = [...pending]
-    if (position && next.length === 0) {
-      next = boxesAtPosition(products, position)
-    }
+    const parsed = positionFromSearch(posicao.trim())
+    const position = parsed?.codigo || posicao.trim()
+    const warehouse = armazemCodigo.trim() || parsed?.armazem || undefined
     if (!invoice) {
       setError("Informe a nota fiscal.")
       return
     }
     if (!position) {
-      setError("Leia o código da prateleira.")
+      setError("Informe a posição.")
       return
     }
     if (!Number.isInteger(count) || count < 1) {
       setError("Informe a quantidade de caixas.")
       return
     }
-    if (next.length === 0) {
-      setError("Nenhuma caixa nesta posição.")
-      return
-    }
-    if (count !== next.length) {
-      setError("A quantidade de caixas não confere com a lista.")
-      return
-    }
     setSaving(true)
     setError(null)
     try {
-      await onAllocate(
-        next.map((item) => item.id),
-        invoice,
-        count,
-        position,
-      )
+      await onAllocate(invoice, count, position, warehouse)
       setSaved(
-        next.length === 1
-          ? `${next[0].id} alocada na nota ${invoice}.`
-          : `${next.length} caixas alocadas na nota ${invoice}.`,
+        count === 1
+          ? `1 caixa alocada na nota ${invoice} em ${position}.`
+          : `${count} caixas alocadas na nota ${invoice} em ${position}.`,
       )
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : "Não foi possível alocar.")
@@ -355,7 +330,8 @@ function AlocarForm({
       <div className="min-h-0 flex-1 overflow-y-auto px-1 pb-[max(2rem,env(safe-area-inset-bottom))]">
         <h1 className="text-2xl font-semibold tracking-tight">Alocar</h1>
         <p className="mt-1 text-sm text-neutral-600">
-          Vincule as caixas da posição à nota fiscal. A saída fica em Enviar.
+          Receba as caixas aqui: informe a nota, a quantidade e a posição para
+          salvar direto.
         </p>
         <div className="mt-4 flex flex-col gap-3">
           <Field
@@ -386,6 +362,7 @@ function AlocarForm({
             placeholder="ex.: A-01"
             onChange={(value) => {
               setPosicao(value)
+              setArmazemCodigo("")
               setError(null)
             }}
           />
@@ -399,42 +376,6 @@ function AlocarForm({
           </p>
         ) : null}
         {saved ? <p className="mt-3 text-sm text-[#1f6b28]">{saved}</p> : null}
-        {pending.length > 0 ? (
-          <div className="mt-4">
-            <p className="text-sm font-medium text-neutral-800">
-              {pending.length === 1
-                ? `1 caixa em ${pending[0].posicao}`
-                : `${pending.length} caixas em ${posicao}`}
-            </p>
-            <ul className="mt-2 flex flex-col gap-1">
-              {pending.map((item) => (
-                <li
-                  key={item.id}
-                  className="flex items-center justify-between gap-2 text-sm text-neutral-700"
-                >
-                  <span>
-                    {item.id} · {item.produto}
-                  </span>
-                  {!saved ? (
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setPending((current) => {
-                          const next = current.filter((box) => box.id !== item.id)
-                          setQuantidade(next.length > 0 ? String(next.length) : "")
-                          return next
-                        })
-                      }}
-                      className="text-xs font-medium text-red-700"
-                    >
-                      Tirar
-                    </button>
-                  ) : null}
-                </li>
-              ))}
-            </ul>
-          </div>
-        ) : null}
         <div className="mt-5">
           <button
             type="submit"
@@ -445,7 +386,7 @@ function AlocarForm({
               ? "Voltar à expedição"
               : saving
                 ? "Salvando…"
-                : "Confirmar alocação"}
+                : "Salvar alocação"}
           </button>
         </div>
       </div>
@@ -757,32 +698,6 @@ function ExpedirPage({
         ) : null}
       </div>
     </div>
-  )
-}
-
-function resolvePosition(value: string) {
-  const trimmed = value.trim()
-  if (!trimmed) return ""
-  return positionFromSearch(trimmed)?.codigo ?? trimmed
-}
-
-function boxesAtPosition(products: Product[], posicao: string) {
-  const wanted = posicao.toLowerCase()
-  return products.flatMap((product) =>
-    product.lots.flatMap((lot) =>
-      lot.boxes
-        .filter(
-          (box) =>
-            !box.expedida &&
-            Boolean(box.posicao) &&
-            box.posicao?.toLowerCase() === wanted,
-        )
-        .map((box) => ({
-          id: box.id,
-          produto: product.nome,
-          posicao: box.posicao ?? posicao,
-        })),
-    ),
   )
 }
 
