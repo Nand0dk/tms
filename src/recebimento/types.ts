@@ -6,6 +6,7 @@ export type Box = {
   armazemCodigo?: string
   coletada?: boolean
   expedida?: boolean
+  notaFiscal?: string
 }
 
 export type ShelfPosition = {

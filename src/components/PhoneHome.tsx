@@ -10,6 +10,7 @@ import {
   removeProduct,
   removeShelf,
   removeWarehouse,
+  saveAllocation,
   saveCollection,
   saveLot,
   savePositions,
@@ -130,8 +131,22 @@ export function PhoneHome() {
     return saveCollection(actor, boxIds).then(apply)
   }
 
-  function shipBoxes(boxIds: string[]) {
-    return saveShipment(actor, boxIds).then(apply)
+  function allocateBoxes(
+    boxIds: string[],
+    notaFiscal: string,
+    quantidade: number,
+    posicao: string,
+  ) {
+    return saveAllocation(actor, boxIds, notaFiscal, quantidade, posicao).then(apply)
+  }
+
+  function shipBoxes(
+    boxIds: string[],
+    notaFiscal: string,
+    quantidade: number,
+    posicao?: string,
+  ) {
+    return saveShipment(actor, boxIds, notaFiscal, quantidade, posicao).then(apply)
   }
 
   function deleteProduct(codigo: string) {
@@ -231,6 +246,7 @@ export function PhoneHome() {
         ) : screen === "expedicao" ? (
           <ExpedicaoScreen
             products={products}
+            onAllocate={allocateBoxes}
             onShip={shipBoxes}
             onBack={() => setScreen("home")}
           />

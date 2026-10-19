@@ -27,7 +27,8 @@ CREATE TABLE IF NOT EXISTS boxes (
   posicao TEXT,
   armazem_codigo TEXT,
   coletada INTEGER NOT NULL DEFAULT 0,
-  expedida INTEGER NOT NULL DEFAULT 0
+  expedida INTEGER NOT NULL DEFAULT 0,
+  nota_fiscal TEXT NOT NULL DEFAULT ''
 );
 
 CREATE TABLE IF NOT EXISTS warehouses (
@@ -71,6 +72,14 @@ CREATE TABLE IF NOT EXISTS history (
   criado_em TEXT NOT NULL,
   actor TEXT NOT NULL,
   texto TEXT NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS notas_fiscais (
+  nota_fiscal TEXT PRIMARY KEY,
+  posicao TEXT NOT NULL DEFAULT '',
+  quantidade INTEGER NOT NULL DEFAULT 0,
+  criado_em TEXT NOT NULL,
+  actor TEXT NOT NULL DEFAULT ''
 );
 `
 
@@ -134,6 +143,7 @@ export async function openDatabase() {
   await client.executeMultiple(schema)
   const db = bind(client)
   await ensureUserColumns(db)
+  await ensureBoxColumns(db)
   await withTransaction(db, async (tx) => {
     await tx.run(
       "INSERT INTO meta (key, value) VALUES ('next_box', '1') ON CONFLICT(key) DO NOTHING",
@@ -151,7 +161,7 @@ export async function readState(db) {
     "SELECT id, product_codigo, numero, quantidade, validade FROM lots ORDER BY ordem, id",
   )
   const boxRows = await db.all(
-    "SELECT id, lot_id, idx, total, posicao, armazem_codigo, coletada, expedida FROM boxes ORDER BY idx",
+    "SELECT id, lot_id, idx, total, posicao, armazem_codigo, coletada, expedida, nota_fiscal FROM boxes ORDER BY idx",
   )
   const warehouseRows = await db.all("SELECT codigo, nome FROM warehouses ORDER BY rowid")
   const shelfRows = await db.all(
@@ -168,6 +178,7 @@ export async function readState(db) {
     if (box.armazem_codigo) item.armazemCodigo = box.armazem_codigo
     if (Number(box.coletada)) item.coletada = true
     if (Number(box.expedida)) item.expedida = true
+    if (box.nota_fiscal) item.notaFiscal = box.nota_fiscal
     const list = boxesByLot.get(box.lot_id) ?? []
     list.push(item)
     boxesByLot.set(box.lot_id, list)
@@ -243,6 +254,23 @@ async function withTransaction(db, run) {
 
 function text(value) {
   return typeof value === "string" ? value.trim() : ""
+}
+
+function normalizeNotaFiscal(value) {
+  return String(value || "")
+    .trim()
+    .toLowerCase()
+    .replace(/[\s.\-\/_]/g, "")
+}
+
+function notaFiscalMatches(stored, term, normalizedTerm) {
+  const raw = String(stored || "").trim()
+  if (!raw) return false
+  const lower = raw.toLowerCase()
+  const needle = term.toLowerCase()
+  if (lower === needle || lower.includes(needle)) return true
+  const normalized = normalizeNotaFiscal(raw)
+  return Boolean(normalizedTerm) && (normalized === normalizedTerm || normalized.includes(normalizedTerm))
 }
 
 function positiveNumber(value) {
@@ -554,7 +582,7 @@ export async function setPositions(db, input) {
     const warehouse = armazemCodigo ? await requireWarehouse(tx, armazemCodigo) : null
     await updateBoxes(tx, input.boxIds, (id) =>
       tx.run(
-        "UPDATE boxes SET posicao = ?, armazem_codigo = ?, coletada = 0, expedida = 0 WHERE id = ?",
+        "UPDATE boxes SET posicao = ?, armazem_codigo = ?, coletada = 0, expedida = 0, nota_fiscal = '' WHERE id = ?",
         posicao,
         warehouse,
         id,
@@ -589,18 +617,131 @@ export async function collectBoxes(db, input) {
 }
 
 export async function shipBoxes(db, input) {
+  const notaFiscal = text(input.notaFiscal)
+  const quantidade = wholeCount(input.quantidade)
+  const ids = idList(input.boxIds)
+  if (!notaFiscal) throw new ApiError("Informe a nota fiscal.")
+  if (quantidade === null) throw new ApiError("Informe a quantidade de caixas.")
+  if (ids.length === 0) throw new ApiError("Adicione ao menos uma caixa.")
+  if (quantidade !== ids.length) {
+    throw new ApiError("A quantidade de caixas não confere com a lista.")
+  }
   return withTransaction(db, async (tx) => {
-    await updateBoxes(tx, input.boxIds, async (id) => {
+    await updateBoxes(tx, ids, async (id) => {
       const eligible = await tx.get(
-        "SELECT id FROM boxes WHERE id = ? AND coletada = 1 AND expedida = 0",
+        "SELECT id FROM boxes WHERE id = ? AND expedida = 0 AND (coletada = 1 OR (posicao IS NOT NULL AND posicao != ''))",
         id,
       )
       if (!eligible) throw new ApiError("Caixa não encontrada.")
-      await tx.run("UPDATE boxes SET expedida = 1, coletada = 1 WHERE id = ?", id)
+      await tx.run(
+        "UPDATE boxes SET expedida = 1, coletada = 1, posicao = NULL, armazem_codigo = NULL, nota_fiscal = ? WHERE id = ?",
+        notaFiscal,
+        id,
+      )
     })
-    await logEvent(tx, input, `${eventActor(input)} expediu as caixas ${boxIdsText(input.boxIds)}.`)
+    await upsertNotaFiscal(tx, {
+      notaFiscal,
+      posicao: text(input.posicao),
+      quantidade: ids.length,
+      actor: eventActor(input),
+    })
+    await logEvent(
+      tx,
+      input,
+      `${eventActor(input)} expediu as caixas ${boxIdsText(ids)} na nota fiscal ${notaFiscal}.`,
+    )
     return readState(tx)
   })
+}
+
+export async function registerNotaFiscal(db, input) {
+  const notaFiscal = text(input.notaFiscal)
+  const posicao = text(input.posicao)
+  const quantidade = wholeCount(input.quantidade) ?? 0
+  if (!notaFiscal) throw new ApiError("Informe a nota fiscal.")
+  return withTransaction(db, async (tx) => {
+    await upsertNotaFiscal(tx, {
+      notaFiscal,
+      posicao,
+      quantidade,
+      actor: eventActor(input),
+    })
+    return lookupNotaFiscal(tx, { notaFiscal })
+  })
+}
+
+export async function allocateBoxes(db, input) {
+  const notaFiscal = text(input.notaFiscal)
+  const quantidade = wholeCount(input.quantidade)
+  const posicao = text(input.posicao)
+  const ids = idList(input.boxIds)
+  if (!notaFiscal) throw new ApiError("Informe a nota fiscal.")
+  if (!posicao) throw new ApiError("Informe a posição.")
+  if (quantidade === null) throw new ApiError("Informe a quantidade de caixas.")
+  if (ids.length === 0) throw new ApiError("Adicione ao menos uma caixa.")
+  if (quantidade !== ids.length) {
+    throw new ApiError("A quantidade de caixas não confere com a lista.")
+  }
+  return withTransaction(db, async (tx) => {
+    await updateBoxes(tx, ids, async (id) => {
+      const eligible = await tx.get(
+        `SELECT id FROM boxes
+         WHERE id = ? AND expedida = 0
+           AND posicao IS NOT NULL AND lower(posicao) = lower(?)`,
+        id,
+        posicao,
+      )
+      if (!eligible) throw new ApiError("Caixa não encontrada na posição.")
+      await tx.run("UPDATE boxes SET nota_fiscal = ? WHERE id = ?", notaFiscal, id)
+    })
+    await upsertNotaFiscal(tx, {
+      notaFiscal,
+      posicao,
+      quantidade: ids.length,
+      actor: eventActor(input),
+    })
+    await logEvent(
+      tx,
+      input,
+      `${eventActor(input)} alocou as caixas ${boxIdsText(ids)} na nota fiscal ${notaFiscal} na posição ${posicao}.`,
+    )
+    return readState(tx)
+  })
+}
+
+async function upsertNotaFiscal(db, { notaFiscal, posicao, quantidade, actor }) {
+  const now = new Date().toISOString()
+  const normalized = normalizeNotaFiscal(notaFiscal)
+  const rows = await db.all(
+    "SELECT nota_fiscal FROM notas_fiscais ORDER BY criado_em DESC",
+  )
+  const existing =
+    rows.find((row) => normalizeNotaFiscal(row.nota_fiscal) === normalized) ||
+    rows.find((row) => String(row.nota_fiscal || "").toLowerCase() === notaFiscal.toLowerCase()) ||
+    null
+  if (existing) {
+    await db.run(
+      `UPDATE notas_fiscais
+       SET nota_fiscal = ?, posicao = ?, quantidade = ?, criado_em = ?, actor = ?
+       WHERE lower(nota_fiscal) = lower(?)`,
+      notaFiscal,
+      posicao || "",
+      quantidade,
+      now,
+      actor || "desconhecido",
+      existing.nota_fiscal,
+    )
+    return
+  }
+  await db.run(
+    `INSERT INTO notas_fiscais (nota_fiscal, posicao, quantidade, criado_em, actor)
+     VALUES (?, ?, ?, ?, ?)`,
+    notaFiscal,
+    posicao || "",
+    quantidade,
+    now,
+    actor || "desconhecido",
+  )
 }
 
 export async function addWarehouse(db, input) {
@@ -715,6 +856,17 @@ async function ensureUserColumns(db) {
         `ALTER TABLE users ADD COLUMN ${area} INTEGER NOT NULL DEFAULT 0`,
       )
     }
+  }
+}
+
+async function ensureBoxColumns(db) {
+  const columns = new Set(
+    (await db.all("PRAGMA table_info(boxes)")).map((column) => column.name),
+  )
+  if (!columns.has("nota_fiscal")) {
+    await db.raw.execute(
+      "ALTER TABLE boxes ADD COLUMN nota_fiscal TEXT NOT NULL DEFAULT ''",
+    )
   }
 }
 
@@ -884,6 +1036,124 @@ export async function listHistory(db, actor) {
       texto: event.texto,
     })),
   }
+}
+
+export async function lookupNotaFiscal(db, input) {
+  const term = text(input.notaFiscal)
+  if (!term) throw new ApiError("Informe a nota fiscal.")
+  const needle = term.toLowerCase()
+  const normalizedTerm = normalizeNotaFiscal(term)
+
+  const allNotas = await db.all(
+    `SELECT nota_fiscal, posicao, quantidade, criado_em, actor
+     FROM notas_fiscais
+     ORDER BY criado_em DESC`,
+  )
+  const notaRow =
+    allNotas.find((row) => normalizeNotaFiscal(row.nota_fiscal) === normalizedTerm) ||
+    allNotas.find((row) => notaFiscalMatches(row.nota_fiscal, term, normalizedTerm)) ||
+    null
+
+  const notaKey = notaRow?.nota_fiscal ?? term
+
+  let boxes = await db.all(
+    `SELECT b.id, b.posicao, b.armazem_codigo, b.coletada, b.expedida, b.nota_fiscal, p.nome AS produto
+     FROM boxes b
+     JOIN lots l ON l.id = b.lot_id
+     JOIN products p ON p.codigo = l.product_codigo
+     WHERE b.nota_fiscal IS NOT NULL AND b.nota_fiscal != ''
+     ORDER BY b.id`,
+  )
+  boxes = boxes.filter((box) =>
+    notaFiscalMatches(box.nota_fiscal, term, normalizedTerm) ||
+    notaFiscalMatches(box.nota_fiscal, notaKey, normalizeNotaFiscal(notaKey)),
+  )
+
+  const events = await db.all(
+    "SELECT criado_em, actor, texto FROM history ORDER BY id DESC",
+  )
+
+  const shipEvents = events.filter((event) => {
+    if (typeof event.texto !== "string") return false
+    const lower = event.texto.toLowerCase()
+    if (!lower.includes("nota fiscal")) return false
+    const nfInText = event.texto.match(/nota fiscal\s+(.+?)\.?$/i)?.[1]?.trim()
+    if (nfInText && notaFiscalMatches(nfInText, term, normalizedTerm)) return true
+    return lower.includes(needle) || (normalizedTerm && normalizeNotaFiscal(event.texto).includes(normalizedTerm))
+  })
+
+  if (boxes.length === 0) {
+    const ids = new Set()
+    for (const event of shipEvents) {
+      for (const id of event.texto.match(/CX-\d+/gi) ?? []) {
+        ids.add(id.toUpperCase())
+      }
+    }
+    if (ids.size > 0) {
+      const list = [...ids]
+      const placeholders = list.map(() => "?").join(", ")
+      boxes = await db.all(
+        `SELECT b.id, b.posicao, b.armazem_codigo, b.coletada, b.expedida, b.nota_fiscal, p.nome AS produto
+         FROM boxes b
+         JOIN lots l ON l.id = b.lot_id
+         JOIN products p ON p.codigo = l.product_codigo
+         WHERE upper(b.id) IN (${placeholders})
+         ORDER BY b.id`,
+        ...list,
+      )
+    }
+  }
+
+  const historyHit = shipEvents[0] || null
+  if (!notaRow && boxes.length === 0 && !historyHit) {
+    throw new ApiError("Nota fiscal não encontrada.")
+  }
+
+  const resolvedNota =
+    boxes.find((box) => box.nota_fiscal)?.nota_fiscal ||
+    notaRow?.nota_fiscal ||
+    historyHit?.texto?.match(/nota fiscal\s+(.+?)\.?$/i)?.[1]?.trim() ||
+    notaKey
+
+  return {
+    notaFiscal: resolvedNota,
+    posicao: notaRow?.posicao || null,
+    quantidade: notaRow?.quantidade ?? boxes.length,
+    expedidaPor: notaRow?.actor || historyHit?.actor || null,
+    expedidaEm: notaRow?.criado_em || historyHit?.criado_em || null,
+    items: boxes.map((box) => {
+      const placeEvent = events.find(
+        (event) =>
+          typeof event.texto === "string" &&
+          event.texto.includes(box.id) &&
+          event.texto.includes("posição"),
+      )
+      const posicaoNoHistorico = placeEvent
+        ? positionFromHistoryText(placeEvent.texto)
+        : null
+      let ondeEsta = "Sem posição"
+      if (box.expedida) ondeEsta = "Expedida"
+      else if (box.coletada) ondeEsta = "Coletada"
+      else if (box.posicao) {
+        ondeEsta = box.armazem_codigo
+          ? `${box.posicao} · ${box.armazem_codigo}`
+          : box.posicao
+      }
+      return {
+        id: box.id,
+        produto: box.produto,
+        ondeEsta,
+        posicao: box.posicao || posicaoNoHistorico || notaRow?.posicao || null,
+        salvaPor: placeEvent?.actor ?? null,
+        salvaEm: placeEvent?.criado_em ?? null,
+      }
+    }),
+  }
+}
+
+function positionFromHistoryText(texto) {
+  const match = String(texto).match(/na posição\s+(.+?)\.?$/i)
+  return match?.[1]?.trim() || null
 }
 
 export async function loginUser(db, input) {

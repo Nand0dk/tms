@@ -89,8 +89,30 @@ export function saveCollection(actor: string, boxIds: string[]) {
   return send("/api/collections", { actor, boxIds })
 }
 
-export function saveShipment(actor: string, boxIds: string[]) {
-  return send("/api/shipments", { actor, boxIds })
+export function saveShipment(
+  actor: string,
+  boxIds: string[],
+  notaFiscal: string,
+  quantidade: number,
+  posicao?: string,
+) {
+  return send("/api/shipments", { actor, boxIds, notaFiscal, quantidade, posicao })
+}
+
+export function saveAllocation(
+  actor: string,
+  boxIds: string[],
+  notaFiscal: string,
+  quantidade: number,
+  posicao: string,
+) {
+  return send("/api/allocations", {
+    actor,
+    boxIds,
+    notaFiscal,
+    quantidade,
+    posicao,
+  })
 }
 
 export function saveWarehouse(actor: string, warehouse: Pick<Warehouse, "codigo" | "nome">) {
@@ -125,6 +147,42 @@ export function loadHistory(actor: string) {
   return request<{ events: HistoryEvent[] }>(
     `/api/history?actor=${encodeURIComponent(actor)}`,
   )
+}
+
+export type NotaFiscalLookupItem = {
+  id: string
+  produto: string
+  ondeEsta: string
+  posicao: string | null
+  salvaPor: string | null
+  salvaEm: string | null
+}
+
+export type NotaFiscalLookup = {
+  notaFiscal: string
+  posicao: string | null
+  quantidade: number
+  expedidaPor: string | null
+  expedidaEm: string | null
+  items: NotaFiscalLookupItem[]
+}
+
+export function lookupNotaFiscal(notaFiscal: string) {
+  return request<NotaFiscalLookup>("/api/nota-fiscal", { notaFiscal })
+}
+
+export function registerNotaFiscal(
+  actor: string,
+  notaFiscal: string,
+  quantidade: number,
+  posicao?: string,
+) {
+  return request<NotaFiscalLookup>("/api/nota-fiscal/register", {
+    actor,
+    notaFiscal,
+    quantidade,
+    posicao,
+  })
 }
 
 export function loadUsers(actor: string) {

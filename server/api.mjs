@@ -4,6 +4,7 @@ import {
   addShelf,
   addShelfPositions,
   addWarehouse,
+  allocateBoxes,
   ApiError,
   collectBoxes,
   deleteLot,
@@ -14,7 +15,9 @@ import {
   listHistory,
   listUsers,
   loginUser,
+  lookupNotaFiscal,
   openDatabase,
+  registerNotaFiscal,
   readState,
   registerUser,
   removeUser,
@@ -100,6 +103,9 @@ async function handle(db, req, pathname) {
   if (pathname === "/api/positions") return setPositions(db, body)
   if (pathname === "/api/collections") return collectBoxes(db, body)
   if (pathname === "/api/shipments") return shipBoxes(db, body)
+  if (pathname === "/api/allocations") return allocateBoxes(db, body)
+  if (pathname === "/api/nota-fiscal") return lookupNotaFiscal(db, body)
+  if (pathname === "/api/nota-fiscal/register") return registerNotaFiscal(db, body)
   if (pathname === "/api/warehouses/delete") return deleteWarehouse(db, body)
   if (pathname === "/api/warehouses") return addWarehouse(db, body)
   if (pathname === "/api/shelves/delete") return deleteShelf(db, body)
