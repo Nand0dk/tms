@@ -13,7 +13,7 @@ export function Field({
   onChange: (value: string) => void
   placeholder?: string
   inputMode?: "decimal" | "numeric" | "text"
-  type?: "text" | "password"
+  type?: "text" | "password" | "date"
 }) {
   return (
     <div className="flex flex-col gap-1">

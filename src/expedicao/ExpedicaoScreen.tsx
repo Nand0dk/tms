@@ -5,6 +5,9 @@ import { Field } from "../recebimento/Field"
 import { positionFromSearch } from "../recebimento/format"
 import { ShelfReader } from "../recebimento/ShelfReader"
 import type { Product } from "../recebimento/types"
+import { MetricasScreen } from "./MetricasScreen"
+import { CIDADES, formatPrazo, prazoDeEnvio, rotaDaCidade } from "./rotas"
+import { RotasScreen } from "./RotasScreen"
 
 type PendingBox = {
   id: string
@@ -19,7 +22,7 @@ type ExpeditionDraft = {
   boxes: PendingBox[]
 }
 
-type ExpedicaoView = "menu" | "alocar" | "expedir" | "buscar"
+type ExpedicaoView = "menu" | "alocar" | "expedir" | "buscar" | "metricas" | "cidades"
 
 export function ExpedicaoScreen({
   products,
@@ -33,6 +36,7 @@ export function ExpedicaoScreen({
     quantidade: number,
     posicao: string,
     armazemCodigo?: string,
+    cidade?: string,
   ) => void | Promise<void>
   onShip: (
     boxIds: string[],
@@ -96,6 +100,16 @@ export function ExpedicaoScreen({
     )
   }
 
+  if (view === "metricas") {
+    return (
+      <MetricasScreen products={products} onBack={() => setView("menu")} />
+    )
+  }
+
+  if (view === "cidades") {
+    return <RotasScreen onBack={() => setView("menu")} />
+  }
+
   return (
     <ExpedicaoMenu
       products={products}
@@ -103,6 +117,8 @@ export function ExpedicaoScreen({
       onAlocar={() => setView("alocar")}
       onExpedir={() => setView("expedir")}
       onBuscar={() => setView("buscar")}
+      onMetricas={() => setView("metricas")}
+      onCidades={() => setView("cidades")}
     />
   )
 }
@@ -113,12 +129,16 @@ function ExpedicaoMenu({
   onAlocar,
   onExpedir,
   onBuscar,
+  onMetricas,
+  onCidades,
 }: {
   products: Product[]
   onBack: () => void
   onAlocar: () => void
   onExpedir: () => void
   onBuscar: () => void
+  onMetricas: () => void
+  onCidades: () => void
 }) {
   const shipped = shippedBoxes(products)
 
@@ -153,6 +173,20 @@ function ExpedicaoMenu({
             className="w-full rounded-xl border border-neutral-300 bg-white px-3 py-3 text-sm font-medium text-neutral-800"
           >
             Buscar nota fiscal
+          </button>
+          <button
+            type="button"
+            onClick={onMetricas}
+            className="w-full rounded-xl border border-neutral-300 bg-white px-3 py-3 text-sm font-medium text-neutral-800"
+          >
+            Métricas
+          </button>
+          <button
+            type="button"
+            onClick={onCidades}
+            className="w-full rounded-xl border border-neutral-300 bg-white px-3 py-3 text-sm font-medium text-neutral-800"
+          >
+            Cidades
           </button>
         </div>
         <div className="mt-8">
@@ -257,12 +291,15 @@ function AlocarForm({
     quantidade: number,
     posicao: string,
     armazemCodigo?: string,
+    cidade?: string,
   ) => void | Promise<void>
   onDone: () => void
 }) {
   const [notaFiscal, setNotaFiscal] = useState("")
   const [quantidade, setQuantidade] = useState("")
   const [posicao, setPosicao] = useState("")
+  const [cidade, setCidade] = useState("")
+  const [cidadeOutra, setCidadeOutra] = useState("")
   const [armazemCodigo, setArmazemCodigo] = useState("")
   const [error, setError] = useState<string | null>(null)
   const [saving, setSaving] = useState(false)
@@ -303,14 +340,19 @@ function AlocarForm({
       setError("Informe a quantidade de caixas.")
       return
     }
+    const destino = cidadeOutra.trim() || cidade.trim()
     setSaving(true)
     setError(null)
     try {
-      await onAllocate(invoice, count, position, warehouse)
+      await onAllocate(invoice, count, position, warehouse, destino || undefined)
+      const prazo = prazoDeEnvio(destino)
+      const rota = rotaDaCidade(destino)
+      const onde = destino || "sem cidade"
+      const quando = rota ? rota.titulo : "em até 7 dias"
       setSaved(
         count === 1
-          ? `1 caixa alocada na nota ${invoice} em ${position}.`
-          : `${count} caixas alocadas na nota ${invoice} em ${position}.`,
+          ? `1 caixa alocada em ${onde} · envio ${formatPrazo(prazo)} (${quando}).`
+          : `${count} caixas alocadas em ${onde} · envio ${formatPrazo(prazo)} (${quando}).`,
       )
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : "Não foi possível alocar.")
@@ -330,8 +372,9 @@ function AlocarForm({
       <div className="min-h-0 flex-1 overflow-y-auto px-1 pb-[max(2rem,env(safe-area-inset-bottom))]">
         <h1 className="text-2xl font-semibold tracking-tight">Alocar</h1>
         <p className="mt-1 text-sm text-neutral-600">
-          Receba as caixas aqui: informe a nota, a quantidade e a posição para
-          salvar direto.
+          Informe a nota, a quantidade, a posição e a cidade. Escolha na lista
+          ou digite. Na lista, o prazo é o próximo dia de saída. Sem cidade,
+          transportadora ou cidade fora da lista: até 7 dias.
         </p>
         <div className="mt-4 flex flex-col gap-3">
           <Field
@@ -366,6 +409,42 @@ function AlocarForm({
               setError(null)
             }}
           />
+          <div className="flex flex-col gap-1">
+            <label htmlFor="alocar-cidade" className="text-sm font-medium text-neutral-800">
+              Cidade
+            </label>
+            <select
+              id="alocar-cidade"
+              value={cidade}
+              onChange={(event) => {
+                setCidade(event.target.value)
+                setCidadeOutra("")
+                setError(null)
+              }}
+              className="rounded-xl border border-neutral-300 bg-white px-3 py-2.5 text-base outline-none focus:border-[#2e7d32] focus:ring-2 focus:ring-[#2e7d32]/20 md:py-2 md:text-sm"
+            >
+              <option value="">Sem cidade · 7 dias</option>
+              <option value="Transportadora">Transportadora · 7 dias</option>
+              {CIDADES.map((item) => (
+                <option key={item.cidade} value={item.cidade}>
+                  {item.cidade} · {item.titulo}
+                </option>
+              ))}
+            </select>
+          </div>
+          <Field
+            id="alocar-cidade-digitada"
+            label="Ou digite a cidade"
+            value={cidadeOutra}
+            placeholder="Nome da cidade"
+            onChange={(value) => {
+              setCidadeOutra(value)
+              setError(null)
+            }}
+          />
+          <p className="-mt-2 text-xs text-neutral-500">
+            {prazoHint(cidade, cidadeOutra)}
+          </p>
           {!saved ? (
             <ShelfReader label="Ler código da prateleira" onRead={loadFromShelf} />
           ) : null}
@@ -722,6 +801,14 @@ function boxesForNota(products: Product[], notaFiscal: string) {
         })),
     ),
   )
+}
+
+function prazoHint(cidade: string, cidadeDigitada: string) {
+  const destino = cidadeDigitada.trim() || cidade.trim()
+  const prazo = prazoDeEnvio(destino)
+  const rota = rotaDaCidade(destino)
+  if (rota) return `Próximo envio: ${formatPrazo(prazo)} (${rota.titulo})`
+  return `Prazo: ${formatPrazo(prazo)} (até 7 dias)`
 }
 
 function shippedBoxes(products: Product[]) {

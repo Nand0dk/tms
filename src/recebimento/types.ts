@@ -7,6 +7,10 @@ export type Box = {
   coletada?: boolean
   expedida?: boolean
   notaFiscal?: string
+  alocadaEm?: string
+  enviadaEm?: string
+  prazo?: string
+  cidade?: string
 }
 
 export type ShelfPosition = {

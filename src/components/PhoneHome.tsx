@@ -136,8 +136,16 @@ export function PhoneHome() {
     quantidade: number,
     posicao: string,
     armazemCodigo?: string,
+    cidade?: string,
   ) {
-    return saveAllocation(actor, notaFiscal, quantidade, posicao, armazemCodigo).then(apply)
+    return saveAllocation(
+      actor,
+      notaFiscal,
+      quantidade,
+      posicao,
+      armazemCodigo,
+      cidade,
+    ).then(apply)
   }
 
   function shipBoxes(

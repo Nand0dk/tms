@@ -105,6 +105,7 @@ export function saveAllocation(
   quantidade: number,
   posicao: string,
   armazemCodigo?: string,
+  cidade?: string,
   boxIds: string[] = [],
 ) {
   return send("/api/allocations", {
@@ -114,6 +115,7 @@ export function saveAllocation(
     quantidade,
     posicao,
     armazemCodigo,
+    cidade,
   })
 }
 

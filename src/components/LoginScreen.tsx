@@ -39,10 +39,9 @@ export function LoginScreen() {
   }
 
   return (
-    <div className="flex min-h-dvh items-center justify-center bg-neutral-100 px-4 py-10">
-      <div className="w-full max-w-sm overflow-hidden rounded-xl bg-white shadow-lg ring-1 ring-black/5">
-        <div className="h-1.5 bg-gradient-to-r from-[#f5c518] via-[#6abf3a] to-[#2e7d32]" />
-        <div className="px-8 pt-8 pb-8">
+    <div className="flex min-h-dvh flex-col bg-[#f4f6f3]">
+      <div className="flex flex-1 items-center justify-center px-4 py-10">
+        <div className="w-full max-w-sm">
           <div className="flex justify-center">
             <Logo className="h-24 w-auto" />
           </div>
@@ -101,6 +100,15 @@ export function LoginScreen() {
           </form>
         </div>
       </div>
+
+      <footer className="flex justify-center px-4 pt-2 pb-[max(1.25rem,env(safe-area-inset-bottom))]">
+        <img
+          src="/logo-proxy.png"
+          alt="PROXY — Soluções inteligentes e conectadas"
+          className="h-auto max-h-16 w-auto max-w-[13rem] object-contain"
+          draggable={false}
+        />
+      </footer>
     </div>
   )
 }

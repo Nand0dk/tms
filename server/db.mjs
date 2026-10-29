@@ -28,7 +28,11 @@ CREATE TABLE IF NOT EXISTS boxes (
   armazem_codigo TEXT,
   coletada INTEGER NOT NULL DEFAULT 0,
   expedida INTEGER NOT NULL DEFAULT 0,
-  nota_fiscal TEXT NOT NULL DEFAULT ''
+  nota_fiscal TEXT NOT NULL DEFAULT '',
+  alocada_em TEXT NOT NULL DEFAULT '',
+  enviada_em TEXT NOT NULL DEFAULT '',
+  prazo TEXT NOT NULL DEFAULT '',
+  cidade TEXT NOT NULL DEFAULT ''
 );
 
 CREATE TABLE IF NOT EXISTS warehouses (
@@ -161,7 +165,9 @@ export async function readState(db) {
     "SELECT id, product_codigo, numero, quantidade, validade FROM lots ORDER BY ordem, id",
   )
   const boxRows = await db.all(
-    "SELECT id, lot_id, idx, total, posicao, armazem_codigo, coletada, expedida, nota_fiscal FROM boxes ORDER BY idx",
+    `SELECT id, lot_id, idx, total, posicao, armazem_codigo, coletada, expedida,
+            nota_fiscal, alocada_em, enviada_em, prazo, cidade
+     FROM boxes ORDER BY idx`,
   )
   const warehouseRows = await db.all("SELECT codigo, nome FROM warehouses ORDER BY rowid")
   const shelfRows = await db.all(
@@ -179,6 +185,10 @@ export async function readState(db) {
     if (Number(box.coletada)) item.coletada = true
     if (Number(box.expedida)) item.expedida = true
     if (box.nota_fiscal) item.notaFiscal = box.nota_fiscal
+    if (box.alocada_em) item.alocadaEm = box.alocada_em
+    if (box.enviada_em) item.enviadaEm = box.enviada_em
+    if (box.prazo) item.prazo = box.prazo
+    if (box.cidade) item.cidade = box.cidade
     const list = boxesByLot.get(box.lot_id) ?? []
     list.push(item)
     boxesByLot.set(box.lot_id, list)
@@ -641,9 +651,11 @@ export async function shipBoxes(db, input) {
       if (!eligible) throw new ApiError("Caixa não encontrada.")
       await tx.run(
         `UPDATE boxes
-         SET expedida = 1, coletada = 1, posicao = '', armazem_codigo = NULL, nota_fiscal = ?
+         SET expedida = 1, coletada = 1, posicao = '', armazem_codigo = NULL,
+             nota_fiscal = ?, enviada_em = ?
          WHERE id = ?`,
         notaFiscal,
+        new Date().toISOString(),
         id,
       )
     })
@@ -683,8 +695,11 @@ export async function allocateBoxes(db, input) {
   const quantidade = wholeCount(input.quantidade)
   const posicao = text(input.posicao)
   const armazemCodigo = text(input.armazemCodigo)
+  const now = new Date()
+  const cidade = text(input.cidade)
   if (!notaFiscal) throw new ApiError("Informe a nota fiscal.")
   if (!posicao) throw new ApiError("Informe a posição.")
+  const prazo = prazoDeEnvio(cidade, now)
   if (quantidade === null || quantidade < 1) {
     throw new ApiError("Informe a quantidade de caixas.")
   }
@@ -737,8 +752,9 @@ export async function allocateBoxes(db, input) {
       ids.push(id)
       await tx.run(
         `INSERT INTO boxes
-         (id, lot_id, idx, total, posicao, armazem_codigo, coletada, expedida, nota_fiscal)
-         VALUES (?, ?, ?, ?, ?, ?, 0, 0, ?)`,
+         (id, lot_id, idx, total, posicao, armazem_codigo, coletada, expedida, nota_fiscal,
+          alocada_em, enviada_em, prazo, cidade)
+         VALUES (?, ?, ?, ?, ?, ?, 0, 0, ?, ?, '', ?, ?)`,
         id,
         lotId,
         index + 1,
@@ -746,6 +762,9 @@ export async function allocateBoxes(db, input) {
         posicao,
         warehouse,
         notaFiscal,
+        now.toISOString(),
+        prazo,
+        cidade,
       )
     }
     await tx.run("UPDATE meta SET value = ? WHERE key = 'next_box'", String(nextBox + quantidade))
@@ -759,7 +778,7 @@ export async function allocateBoxes(db, input) {
     await logEvent(
       tx,
       input,
-      `${eventActor(input)} recebeu e alocou as caixas ${boxIdsText(ids)} na nota fiscal ${notaFiscal} na posição ${place}.`,
+      `${eventActor(input)} recebeu e alocou as caixas ${boxIdsText(ids)} na nota fiscal ${notaFiscal} na posição ${place} para ${cidade || "sem cidade"} com prazo ${prazo}.`,
     )
     return readState(tx)
   })
@@ -919,11 +938,136 @@ async function ensureBoxColumns(db) {
   const columns = new Set(
     (await db.all("PRAGMA table_info(boxes)")).map((column) => column.name),
   )
-  if (!columns.has("nota_fiscal")) {
-    await db.raw.execute(
-      "ALTER TABLE boxes ADD COLUMN nota_fiscal TEXT NOT NULL DEFAULT ''",
-    )
+  const extras = [
+    ["nota_fiscal", "TEXT NOT NULL DEFAULT ''"],
+    ["alocada_em", "TEXT NOT NULL DEFAULT ''"],
+    ["enviada_em", "TEXT NOT NULL DEFAULT ''"],
+    ["prazo", "TEXT NOT NULL DEFAULT ''"],
+    ["cidade", "TEXT NOT NULL DEFAULT ''"],
+  ]
+  for (const [name, definition] of extras) {
+    if (!columns.has(name)) {
+      await db.raw.execute(`ALTER TABLE boxes ADD COLUMN ${name} ${definition}`)
+    }
   }
+  await backfillBoxTimes(db)
+}
+
+async function backfillBoxTimes(db) {
+  const done = await db.get("SELECT value FROM meta WHERE key = 'box_times_backfill'")
+  if (done?.value === "1") return
+  const events = await db.all("SELECT criado_em, texto FROM history ORDER BY id")
+  for (const event of events) {
+    const ids = String(event.texto || "").match(/CX-\d+/gi) ?? []
+    if (ids.length === 0) continue
+    const lower = String(event.texto).toLowerCase()
+    const day = dateOnly(event.criado_em)
+    const shipped = lower.includes("enviou") || lower.includes("expediu")
+    const allocated = lower.includes("alocou")
+    for (const id of ids) {
+      if (allocated) {
+        await db.run(
+          `UPDATE boxes
+           SET alocada_em = CASE WHEN alocada_em = '' THEN ? ELSE alocada_em END,
+               prazo = CASE WHEN prazo = '' THEN ? ELSE prazo END
+           WHERE upper(id) = ?`,
+          event.criado_em,
+          day,
+          id.toUpperCase(),
+        )
+      }
+      if (shipped) {
+        await db.run(
+          `UPDATE boxes
+           SET enviada_em = CASE WHEN enviada_em = '' THEN ? ELSE enviada_em END
+           WHERE upper(id) = ?`,
+          event.criado_em,
+          id.toUpperCase(),
+        )
+      }
+    }
+  }
+  await db.run(
+    "INSERT INTO meta (key, value) VALUES ('box_times_backfill', '1') ON CONFLICT(key) DO UPDATE SET value = '1'",
+  )
+}
+
+function dateOnly(value) {
+  const raw = text(value)
+  if (!raw) return ""
+  const match = raw.match(/^(\d{4}-\d{2}-\d{2})/)
+  if (match) return match[1]
+  const date = new Date(raw)
+  if (Number.isNaN(date.getTime())) return ""
+  const year = date.getFullYear()
+  const month = String(date.getMonth() + 1).padStart(2, "0")
+  const day = String(date.getDate()).padStart(2, "0")
+  return `${year}-${month}-${day}`
+}
+
+const cidadeDias = {
+  guarulhos: [1, 3],
+  itapevi: [1, 3],
+  barueri: [1, 3],
+  mauá: [1, 3],
+  "são paulo": [1, 3],
+  itu: [1, 3],
+  salto: [1, 3],
+  indaiatuba: [1, 3],
+  vinhedo: [1, 3],
+  campinas: [1, 3],
+  jundiaí: [2, 4],
+  cabreúva: [2, 4],
+  itupeva: [2, 4],
+  capivari: [2, 4],
+  "elias fausto": [2, 4],
+  sumaré: [2, 4],
+  araraquara: [2, 4],
+  limeira: [2, 4],
+  ituverava: [2, 4],
+  "são joaquim da barra": [2, 4],
+  boituva: [5],
+  botucatu: [5],
+  bofete: [5],
+  "lençóis paulista": [5],
+  "são manuel": [5],
+  itapetininga: [5],
+  "araçoiaba da serra": [5],
+  "capela do alto": [5],
+  tietê: [5],
+  jumirim: [5],
+  "cesário lange": [5],
+}
+
+function isoDay(date) {
+  const year = date.getFullYear()
+  const month = String(date.getMonth() + 1).padStart(2, "0")
+  const day = String(date.getDate()).padStart(2, "0")
+  return `${year}-${month}-${day}`
+}
+
+function prazoDaCidade(cidade, from = new Date()) {
+  const dias = cidadeDias[String(cidade || "").trim().toLowerCase()]
+  if (!dias) return ""
+  const start = new Date(from)
+  if (Number.isNaN(start.getTime())) return ""
+  start.setHours(12, 0, 0, 0)
+  for (let offset = 0; offset < 8; offset += 1) {
+    const day = new Date(start)
+    day.setDate(start.getDate() + offset)
+    if (dias.includes(day.getDay())) return isoDay(day)
+  }
+  return ""
+}
+
+function prazoDeEnvio(cidade, from = new Date()) {
+  const rota = prazoDaCidade(cidade, from)
+  if (rota) return rota
+  const day = new Date(from)
+  if (Number.isNaN(day.getTime())) return isoDay(new Date())
+  day.setHours(12, 0, 0, 0)
+  day.setDate(day.getDate() + 7)
+  return isoDay(day)
 }
 
 async function ensureAdmin(db) {
