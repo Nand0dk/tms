@@ -2,13 +2,16 @@ import { useEffect, useRef, useState } from "react"
 import { BrowserMultiFormatReader } from "@zxing/browser"
 
 type TorchCapabilities = MediaTrackCapabilities & { torch?: boolean }
+type TorchConstraintSet = MediaTrackConstraintSet & { torch?: boolean }
 
 async function setTorch(track: MediaStreamTrack | null, on: boolean) {
   if (!track || track.readyState !== "live") return
   try {
     const caps = track.getCapabilities?.() as TorchCapabilities | undefined
     if (!caps?.torch) return
-    await track.applyConstraints({ advanced: [{ torch: on }] })
+    await track.applyConstraints({
+      advanced: [{ torch: on } as TorchConstraintSet],
+    })
   } catch {
     // Desktop / unsupported devices — ignore
   }
