@@ -73,12 +73,12 @@ function StockList({
   )
 
   return (
-    <div className="flex min-h-0 flex-1 flex-col">
+    <div className="flex min-h-0 w-full min-w-0 flex-1 flex-col">
       <header className="flex items-center px-1 pt-4 pb-2">
         <BackButton onClick={onBack} label="Início" />
       </header>
       <div className="px-1">
-        <h1 className="text-2xl font-semibold tracking-tight">Estoque</h1>
+        <h1 className="text-xl font-semibold tracking-tight sm:text-2xl">Estoque</h1>
         <label htmlFor="pesquisar-estoque" className="sr-only">
           Pesquisar estoque
         </label>
@@ -101,13 +101,13 @@ function StockList({
             Nenhum resultado encontrado.
           </p>
         ) : (
-          <ul className="flex flex-col gap-3">
+          <ul className="grid grid-cols-1 gap-3 lg:grid-cols-2">
             {filtered.map(({ product, boxes }) => (
               <li
                 key={product.codigo}
-                className="rounded-xl bg-white px-3 py-3 shadow-sm ring-1 ring-black/5"
+                className="min-w-0 rounded-xl bg-white px-3 py-3 shadow-sm ring-1 ring-black/5"
               >
-                <p className="text-sm font-semibold">{product.nome}</p>
+                <p className="truncate text-sm font-semibold">{product.nome}</p>
                 <p className="mt-0.5 text-xs text-neutral-500">
                   {product.codigo}
                   {" · saldo "}
@@ -258,16 +258,16 @@ function PositionForm({
   }
 
   return (
-    <div className="flex min-h-0 flex-1 flex-col">
+    <div className="flex min-h-0 w-full min-w-0 flex-1 flex-col">
       <header className="flex items-center px-1 pt-4 pb-2">
         <BackButton onClick={onBack} />
       </header>
       <form
-        className="flex min-h-0 flex-1 flex-col overflow-y-auto px-1 pb-[max(2rem,env(safe-area-inset-bottom))]"
+        className="flex min-h-0 w-full min-w-0 flex-1 flex-col overflow-y-auto px-1 pb-[max(2rem,env(safe-area-inset-bottom))]"
         onSubmit={handleSubmit}
         noValidate
       >
-        <h1 className="text-2xl font-semibold tracking-tight">
+        <h1 className="text-xl font-semibold tracking-tight sm:text-2xl">
           {box.posicao ? "Alterar posição" : "Definir posição"}
         </h1>
         <p className="mt-1 text-sm text-neutral-600">

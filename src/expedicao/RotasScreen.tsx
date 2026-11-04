@@ -5,22 +5,22 @@ export function RotasScreen({ onBack }: { onBack: () => void }) {
   const hoje = new Date().getDay()
 
   return (
-    <div className="flex min-h-0 flex-1 flex-col">
+    <div className="flex min-h-0 w-full min-w-0 flex-1 flex-col">
       <header className="flex items-center px-1 pt-4 pb-2">
         <BackButton onClick={onBack} />
       </header>
       <div className="min-h-0 flex-1 overflow-y-auto px-1 pb-[max(2rem,env(safe-area-inset-bottom))]">
-        <h1 className="text-2xl font-semibold tracking-tight">Cidades</h1>
+        <h1 className="text-xl font-semibold tracking-tight sm:text-2xl">Cidades</h1>
         <p className="mt-1 text-sm text-neutral-600">
           Cidades que saem em cada dia da semana.
         </p>
-        <div className="mt-4 flex flex-col gap-3">
+        <div className="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
           {ROTAS.map((rota) => {
             const hojeNestaRota = rota.dias.includes(hoje)
             return (
               <section
                 key={rota.id}
-                className={`rounded-xl bg-white px-3 py-3 shadow-sm ring-1 ${
+                className={`min-w-0 rounded-xl bg-white px-3 py-3 shadow-sm ring-1 ${
                   hojeNestaRota ? "ring-[#1f6b28]" : "ring-black/5"
                 }`}
               >

@@ -38,17 +38,17 @@ export function NewProductForm({
   }
 
   return (
-    <div className="flex min-h-0 flex-1 flex-col">
+    <div className="flex min-h-0 w-full min-w-0 flex-1 flex-col">
       <header className="flex items-center px-1 pt-4 pb-2">
         <BackButton onClick={onBack} />
       </header>
 
       <form
-        className="flex min-h-0 flex-1 flex-col overflow-y-auto px-4 pb-[max(2rem,env(safe-area-inset-bottom))]"
+        className="flex min-h-0 w-full min-w-0 flex-1 flex-col overflow-y-auto px-4 pb-[max(2rem,env(safe-area-inset-bottom))]"
         onSubmit={handleSubmit}
         noValidate
       >
-        <h1 className="text-2xl font-semibold tracking-tight">Novo produto</h1>
+        <h1 className="text-xl font-semibold tracking-tight sm:text-2xl">Novo produto</h1>
 
         <div className="mt-4 flex flex-col gap-3">
           <Field

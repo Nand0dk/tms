@@ -85,7 +85,7 @@ export function UsuariosScreen({
   }
 
   return (
-    <div className="flex min-h-0 flex-1 flex-col">
+    <div className="flex min-h-0 w-full min-w-0 flex-1 flex-col">
       <header className="flex items-center justify-between gap-2 px-1 pt-4 pb-2">
         <BackButton onClick={onBack} label="Início" />
         <button
@@ -98,7 +98,7 @@ export function UsuariosScreen({
         </button>
       </header>
       <div className="px-1">
-        <h1 className="text-2xl font-semibold tracking-tight">Usuários</h1>
+        <h1 className="text-xl font-semibold tracking-tight sm:text-2xl">Usuários</h1>
         <p className="mt-1 text-sm text-neutral-600">
           Cadastre usuários e libere o acesso de cada área.
         </p>
@@ -111,13 +111,13 @@ export function UsuariosScreen({
             Nenhum usuário ainda.
           </p>
         ) : (
-          <ul className="flex flex-col gap-2">
+          <ul className="grid grid-cols-1 gap-2 sm:grid-cols-2">
             {users.map((user) => (
               <li
                 key={user.usuario}
-                className="rounded-xl bg-white px-3 py-2.5 shadow-sm ring-1 ring-black/5"
+                className="min-w-0 rounded-xl bg-white px-3 py-2.5 shadow-sm ring-1 ring-black/5"
               >
-                <p className="text-sm font-semibold">{user.nome}</p>
+                <p className="truncate text-sm font-semibold">{user.nome}</p>
                 <p className="mt-0.5 text-xs text-neutral-500">{user.usuario}</p>
                 {user.areas.usuarios ? (
                   <p className="mt-2 text-xs text-neutral-600">Acesso a todas as áreas.</p>
@@ -189,12 +189,12 @@ function NewUserForm({
   }
 
   return (
-    <div className="flex min-h-0 flex-1 flex-col">
+    <div className="flex min-h-0 w-full min-w-0 flex-1 flex-col">
       <header className="flex items-center px-1 pt-4 pb-2">
         <BackButton onClick={onBack} />
       </header>
       <form className="flex flex-col px-1 pb-8" onSubmit={handleSubmit} noValidate>
-        <h1 className="text-2xl font-semibold tracking-tight">Novo usuário</h1>
+        <h1 className="text-xl font-semibold tracking-tight sm:text-2xl">Novo usuário</h1>
         <div className="mt-4 flex flex-col gap-3">
           <Field
             id="nome-usuario"

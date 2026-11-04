@@ -31,12 +31,12 @@ export function HistoricoScreen({
   }, [actor])
 
   return (
-    <div className="flex min-h-0 flex-1 flex-col">
+    <div className="flex min-h-0 w-full min-w-0 flex-1 flex-col">
       <header className="flex items-center px-1 pt-4 pb-2">
         <BackButton onClick={onBack} label="Início" />
       </header>
       <div className="px-1">
-        <h1 className="text-2xl font-semibold tracking-tight">Histórico</h1>
+        <h1 className="text-xl font-semibold tracking-tight sm:text-2xl">Histórico</h1>
         <p className="mt-1 text-sm text-neutral-600">Quem adicionou ou removeu.</p>
       </div>
       <div className="mt-3 min-h-0 flex-1 overflow-y-auto px-1 pb-[max(2rem,env(safe-area-inset-bottom))]">

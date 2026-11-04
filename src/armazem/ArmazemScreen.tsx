@@ -201,7 +201,7 @@ function WarehouseList({
   }, [warehouses, query])
 
   return (
-    <div className="flex min-h-0 flex-1 flex-col">
+    <div className="flex min-h-0 w-full min-w-0 flex-1 flex-col">
       <header className="flex items-center justify-between gap-2 px-1 pt-4 pb-2">
         <BackButton onClick={onBack} label="Início" />
         <button
@@ -214,7 +214,7 @@ function WarehouseList({
         </button>
       </header>
       <div className="px-1">
-        <h1 className="text-2xl font-semibold tracking-tight">Armazém</h1>
+        <h1 className="text-xl font-semibold tracking-tight sm:text-2xl">Armazém</h1>
         <label htmlFor="pesquisar-armazem" className="sr-only">
           Pesquisar armazém
         </label>
@@ -237,13 +237,13 @@ function WarehouseList({
             Nenhum armazém encontrado.
           </p>
         ) : (
-          <ul className="flex flex-col gap-2">
+          <ul className="grid grid-cols-1 gap-2 lg:grid-cols-2">
             {filtered.map((warehouse) => (
               <li
                 key={warehouse.codigo}
-                className="rounded-xl bg-white px-3 py-2.5 shadow-sm ring-1 ring-black/5"
+                className="min-w-0 rounded-xl bg-white px-3 py-2.5 shadow-sm ring-1 ring-black/5"
               >
-                <p className="text-sm font-semibold">{warehouse.nome}</p>
+                <p className="truncate text-sm font-semibold">{warehouse.nome}</p>
                 <p className="mt-0.5 text-xs text-neutral-500">{warehouse.codigo}</p>
                 <ShelfList
                   warehouse={warehouse}
@@ -496,16 +496,16 @@ function RegisterBoxForm({
   }
 
   return (
-    <div className="flex min-h-0 flex-1 flex-col">
+    <div className="flex min-h-0 w-full min-w-0 flex-1 flex-col">
       <header className="flex items-center px-1 pt-4 pb-2">
         <BackButton onClick={onBack} />
       </header>
       <form
-        className="flex min-h-0 flex-1 flex-col overflow-y-auto px-1 pb-[max(2rem,env(safe-area-inset-bottom))]"
+        className="flex min-h-0 w-full min-w-0 flex-1 flex-col overflow-y-auto px-1 pb-[max(2rem,env(safe-area-inset-bottom))]"
         onSubmit={handleSubmit}
         noValidate
       >
-        <h1 className="text-2xl font-semibold tracking-tight">Registrar caixas</h1>
+        <h1 className="text-xl font-semibold tracking-tight sm:text-2xl">Registrar caixas</h1>
         <p className="mt-1 text-sm text-neutral-600">
           {warehouse.codigo} · {warehouse.nome}
         </p>
@@ -744,12 +744,12 @@ function NewWarehouseForm({
   }
 
   return (
-    <div className="flex min-h-0 flex-1 flex-col">
+    <div className="flex min-h-0 w-full min-w-0 flex-1 flex-col">
       <header className="flex items-center px-1 pt-4 pb-2">
         <BackButton onClick={onBack} />
       </header>
       <form className="flex flex-col px-1 pb-8" onSubmit={handleSubmit} noValidate>
-        <h1 className="text-2xl font-semibold tracking-tight">Novo armazém</h1>
+        <h1 className="text-xl font-semibold tracking-tight sm:text-2xl">Novo armazém</h1>
         <div className="mt-4 flex flex-col gap-3">
           <Field
             id="codigo-armazem"
@@ -825,12 +825,12 @@ function NewShelfForm({
   }
 
   return (
-    <div className="flex min-h-0 flex-1 flex-col">
+    <div className="flex min-h-0 w-full min-w-0 flex-1 flex-col">
       <header className="flex items-center px-1 pt-4 pb-2">
         <BackButton onClick={onBack} />
       </header>
       <form className="flex flex-col px-1 pb-8" onSubmit={handleSubmit} noValidate>
-        <h1 className="text-2xl font-semibold tracking-tight">Nova prateleira</h1>
+        <h1 className="text-xl font-semibold tracking-tight sm:text-2xl">Nova prateleira</h1>
         <p className="mt-1 text-sm text-neutral-600">
           {warehouse.codigo} · {warehouse.nome}
         </p>
@@ -914,12 +914,12 @@ function AddPositionsForm({
   }
 
   return (
-    <div className="flex min-h-0 flex-1 flex-col">
+    <div className="flex min-h-0 w-full min-w-0 flex-1 flex-col">
       <header className="flex items-center px-1 pt-4 pb-2">
         <BackButton onClick={onBack} />
       </header>
       <form className="flex flex-col px-1 pb-8" onSubmit={handleSubmit} noValidate>
-        <h1 className="text-2xl font-semibold tracking-tight">Adicionar posições</h1>
+        <h1 className="text-xl font-semibold tracking-tight sm:text-2xl">Adicionar posições</h1>
         <p className="mt-1 text-sm text-neutral-600">
           {warehouse.codigo} · Prateleira {prateleira}
         </p>

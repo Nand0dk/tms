@@ -143,16 +143,16 @@ function ExpedicaoMenu({
   const shipped = shippedBoxes(products)
 
   return (
-    <div className="flex min-h-0 flex-1 flex-col">
+    <div className="flex min-h-0 w-full min-w-0 flex-1 flex-col">
       <header className="flex items-center px-1 pt-4 pb-2">
         <BackButton onClick={onBack} label="Início" />
       </header>
       <div className="min-h-0 flex-1 overflow-y-auto px-1 pb-[max(2rem,env(safe-area-inset-bottom))]">
-        <h1 className="text-2xl font-semibold tracking-tight">Expedição</h1>
+        <h1 className="text-xl font-semibold tracking-tight sm:text-2xl">Expedição</h1>
         <p className="mt-1 text-sm text-neutral-600">
           Alocar caixas, enviar ou consultar uma nota fiscal.
         </p>
-        <div className="mt-5 flex flex-col gap-3">
+        <div className="mt-5 grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
           <button
             type="button"
             onClick={onAlocar}
@@ -184,7 +184,7 @@ function ExpedicaoMenu({
           <button
             type="button"
             onClick={onCidades}
-            className="w-full rounded-xl border border-neutral-300 bg-white px-3 py-3 text-sm font-medium text-neutral-800"
+            className="w-full rounded-xl border border-neutral-300 bg-white px-3 py-3 text-sm font-medium text-neutral-800 sm:col-span-2 lg:col-span-1"
           >
             Cidades
           </button>
@@ -239,7 +239,7 @@ function BuscarNotaFiscal({
 
   return (
     <form
-      className="flex min-h-0 flex-1 flex-col"
+      className="flex min-h-0 w-full min-w-0 flex-1 flex-col"
       onSubmit={(event) => void handleSearch(event)}
       noValidate
     >
@@ -247,7 +247,7 @@ function BuscarNotaFiscal({
         <BackButton onClick={onBack} />
       </header>
       <div className="min-h-0 flex-1 overflow-y-auto px-1 pb-[max(2rem,env(safe-area-inset-bottom))]">
-        <h1 className="text-2xl font-semibold tracking-tight">Buscar nota fiscal</h1>
+        <h1 className="text-xl font-semibold tracking-tight sm:text-2xl">Buscar nota fiscal</h1>
         <p className="mt-1 text-sm text-neutral-600">
           Informe o número da NF para ver onde as caixas estão e quem posicionou.
         </p>
@@ -362,7 +362,7 @@ function AlocarForm({
 
   return (
     <form
-      className="flex min-h-0 flex-1 flex-col"
+      className="flex min-h-0 w-full min-w-0 flex-1 flex-col"
       onSubmit={(event) => void handleSubmit(event)}
       noValidate
     >
@@ -370,7 +370,7 @@ function AlocarForm({
         <BackButton onClick={saved ? onDone : onBack} />
       </header>
       <div className="min-h-0 flex-1 overflow-y-auto px-1 pb-[max(2rem,env(safe-area-inset-bottom))]">
-        <h1 className="text-2xl font-semibold tracking-tight">Alocar</h1>
+        <h1 className="text-xl font-semibold tracking-tight sm:text-2xl">Alocar</h1>
         <p className="mt-1 text-sm text-neutral-600">
           Informe a nota, a quantidade, a posição e a cidade. Escolha na lista
           ou digite. Na lista, o prazo é o próximo dia de saída. Sem cidade,
@@ -517,7 +517,7 @@ function ExpedirForm({
 
   return (
     <form
-      className="flex min-h-0 flex-1 flex-col"
+      className="flex min-h-0 w-full min-w-0 flex-1 flex-col"
       onSubmit={(event) => void handleSubmit(event)}
       noValidate
     >
@@ -525,7 +525,7 @@ function ExpedirForm({
         <BackButton onClick={onBack} />
       </header>
       <div className="min-h-0 flex-1 overflow-y-auto px-1 pb-[max(2rem,env(safe-area-inset-bottom))]">
-        <h1 className="text-2xl font-semibold tracking-tight">Enviar</h1>
+        <h1 className="text-xl font-semibold tracking-tight sm:text-2xl">Enviar</h1>
         <p className="mt-1 text-sm text-neutral-600">
           Informe a nota fiscal já alocada para confirmar a saída.
         </p>
@@ -568,12 +568,12 @@ function NotaFiscalHistorico({
   onBack: () => void
 }) {
   return (
-    <div className="flex min-h-0 flex-1 flex-col">
+    <div className="flex min-h-0 w-full min-w-0 flex-1 flex-col">
       <header className="flex items-center px-1 pt-4 pb-2">
         <BackButton onClick={onBack} />
       </header>
       <div className="min-h-0 flex-1 overflow-y-auto px-1 pb-[max(2rem,env(safe-area-inset-bottom))]">
-        <h1 className="text-2xl font-semibold tracking-tight">Histórico da nota</h1>
+        <h1 className="text-xl font-semibold tracking-tight sm:text-2xl">Histórico da nota</h1>
         <div className="mt-3 rounded-xl bg-white px-3 py-3 shadow-sm ring-1 ring-black/5">
           <p className="text-sm text-neutral-600">Nota fiscal</p>
           <p className="text-base font-semibold">{data.notaFiscal}</p>
@@ -686,12 +686,12 @@ function ExpedirPage({
   }
 
   return (
-    <div className="flex min-h-0 flex-1 flex-col">
+    <div className="flex min-h-0 w-full min-w-0 flex-1 flex-col">
       <header className="flex items-center px-1 pt-4 pb-2">
         <BackButton onClick={saved ? onDone : onBack} />
       </header>
       <div className="min-h-0 flex-1 overflow-y-auto px-1 pb-[max(2rem,env(safe-area-inset-bottom))]">
-        <h1 className="text-2xl font-semibold tracking-tight">Confirmar envio</h1>
+        <h1 className="text-xl font-semibold tracking-tight sm:text-2xl">Confirmar envio</h1>
         <p className="mt-1 text-sm text-neutral-600">
           Confira os dados e confirme para registrar a saída.
         </p>

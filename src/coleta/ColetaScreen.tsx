@@ -136,7 +136,7 @@ export function ColetaScreen({
 
   return (
     <form
-      className="flex min-h-0 flex-1 flex-col"
+      className="flex min-h-0 w-full min-w-0 flex-1 flex-col"
       onSubmit={handleSubmit}
       noValidate
     >
@@ -144,7 +144,7 @@ export function ColetaScreen({
         <BackButton onClick={onBack} label="Início" />
       </header>
       <div className="min-h-0 flex-1 overflow-y-auto px-1 pb-[max(2rem,env(safe-area-inset-bottom))]">
-        <h1 className="text-2xl font-semibold tracking-tight">Coleta</h1>
+        <h1 className="text-xl font-semibold tracking-tight sm:text-2xl">Coleta</h1>
         <p className="mt-1 text-sm text-neutral-600">
           Leia as caixas que serão retiradas da posição.
         </p>

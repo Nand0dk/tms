@@ -1,42 +1,45 @@
-const CIDADES_SEGUNDA_QUARTA = [
-  "Guarulhos",
-  "Itapevi",
+const CIDADES_SEGUNDA_QUARTA = sorted([
   "Barueri",
-  "Mauá",
-  "São Paulo",
-  "Itu",
-  "Salto",
-  "Indaiatuba",
-  "Vinhedo",
   "Campinas",
-]
+  "Guarulhos",
+  "Indaiatuba",
+  "Itapevi",
+  "Itu",
+  "Mauá",
+  "Salto",
+  "São Paulo",
+  "Vinhedo",
+])
 
-const CIDADES_TERCA_QUINTA = [
-  "Jundiaí",
+const CIDADES_TERCA_QUINTA = sorted([
+  "Araraquara",
   "Cabreúva",
-  "Itupeva",
   "Capivari",
   "Elias Fausto",
-  "Sumaré",
-  "Araraquara",
-  "Limeira",
+  "Itupeva",
   "Ituverava",
+  "Jundiaí",
+  "Limeira",
+  "Sumaré",
   "São Joaquim da Barra",
-]
+])
 
-const CIDADES_SEXTA = [
+const CIDADES_SEXTA = sorted([
+  "Araçoiaba da Serra",
+  "Bofete",
   "Boituva",
   "Botucatu",
-  "Bofete",
+  "Capela do Alto",
+  "Cesário Lange",
+  "Itapetininga",
+  "Jumirim",
   "Lençóis Paulista",
   "São Manuel",
-  "Itapetininga",
-  "Araçoiaba da Serra",
-  "Capela do Alto",
   "Tietê",
-  "Jumirim",
-  "Cesário Lange",
-]
+])
+
+/** Cidades na lista sem dia de rota fixo — prazo padrão de +7 dias. */
+const CIDADES_PRAZO_PADRAO = sorted(["Sorocaba"])
 
 export const ROTAS = [
   {
@@ -71,11 +74,14 @@ export const ROTAS = [
   },
 ]
 
-export const CIDADES = mergeCidades(ROTAS)
+export const CIDADES = mergeCidades(ROTAS, CIDADES_PRAZO_PADRAO)
 
 export function rotaDaCidade(cidade: string) {
   const wanted = cidade.trim().toLowerCase()
-  return CIDADES.find((item) => item.cidade.toLowerCase() === wanted) ?? null
+  const item = CIDADES.find((entry) => entry.cidade.toLowerCase() === wanted) ?? null
+  // Cidades sem dia de rota fixo usam o prazo padrão (+7), não uma rota semanal.
+  if (!item || item.dias.length === 0) return null
+  return item
 }
 
 export function proximoPrazo(cidade: string, from = new Date()) {
@@ -104,7 +110,11 @@ export function formatPrazo(iso: string) {
   return `${day}/${month}/${year}`
 }
 
-function mergeCidades(rotas: typeof ROTAS) {
+function sorted(cidades: string[]) {
+  return [...cidades].sort((a, b) => a.localeCompare(b, "pt-BR"))
+}
+
+function mergeCidades(rotas: typeof ROTAS, extras: string[] = []) {
   const byName = new Map<string, { cidade: string; dias: number[]; titulos: string[] }>()
   for (const rota of rotas) {
     for (const cidade of rota.cidades) {
@@ -123,11 +133,22 @@ function mergeCidades(rotas: typeof ROTAS) {
       if (!existing.titulos.includes(rota.titulo)) existing.titulos.push(rota.titulo)
     }
   }
-  return [...byName.values()].map((item) => ({
-    cidade: item.cidade,
-    dias: item.dias,
-    titulo: item.titulos.join(" / "),
-  }))
+  for (const cidade of extras) {
+    const key = cidade.toLowerCase()
+    if (byName.has(key)) continue
+    byName.set(key, {
+      cidade,
+      dias: [],
+      titulos: ["7 dias"],
+    })
+  }
+  return [...byName.values()]
+    .map((item) => ({
+      cidade: item.cidade,
+      dias: item.dias,
+      titulo: item.titulos.join(" / "),
+    }))
+    .sort((a, b) => a.cidade.localeCompare(b.cidade, "pt-BR"))
 }
 
 function atNoon(from: Date) {

@@ -37,7 +37,7 @@ export function RecebimentoScreen({
   }
 
   return (
-    <div className="flex min-h-0 flex-1 flex-col bg-[#f4f6f3] text-neutral-900">
+    <div className="flex min-h-0 w-full min-w-0 flex-1 flex-col bg-[#f4f6f3] text-neutral-900">
       {view === "novo" ? (
         <NewProductForm
           products={products}

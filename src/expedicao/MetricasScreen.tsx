@@ -5,6 +5,18 @@ import { formatPrazo, prazoDeEnvio } from "./rotas"
 
 const DAYS = 7
 
+type NotaMetric = {
+  notaFiscal: string
+  cidade: string
+  prazo: string
+  alocadaEm: string
+  enviadaEm: string
+  volumes: number
+  enviada: boolean
+  onTime: boolean
+  atrasada: boolean
+}
+
 export function MetricasScreen({
   products,
   onBack,
@@ -16,43 +28,45 @@ export function MetricasScreen({
   const todayLabel = formatDayLabel(metrics.today)
 
   return (
-    <div className="flex min-h-0 flex-1 flex-col">
+    <div className="flex min-h-0 w-full min-w-0 flex-1 flex-col">
       <header className="flex items-center px-1 pt-3 pb-1">
         <BackButton onClick={onBack} />
       </header>
-      <div className="min-h-0 flex-1 overflow-y-auto px-1 pb-[max(1.5rem,env(safe-area-inset-bottom))]">
+      <div className="min-h-0 flex-1 overflow-y-auto overflow-x-hidden px-1 pb-[max(1.5rem,env(safe-area-inset-bottom))]">
         <h1 className="text-xl font-semibold tracking-tight sm:text-2xl">Métricas</h1>
         <p className="mt-0.5 text-xs text-neutral-600 sm:text-sm">
-          Envios e prazo · {todayLabel}
+          Envios por nota fiscal · {todayLabel}
         </p>
 
         {metrics.atrasadas.length > 0 ? (
           <div className="sticky top-0 z-10 -mx-1 bg-[#f4f6f3] px-1 pt-2">
-            <AtrasoAlert boxes={metrics.atrasadas} />
+            <AtrasoAlert notas={metrics.atrasadas} />
           </div>
         ) : null}
 
-        <div className="mt-2.5 grid grid-cols-2 gap-1.5">
+        <div className="mt-2.5 grid grid-cols-2 gap-1.5 sm:gap-2 lg:grid-cols-4">
           <KpiCard
             label="Enviadas hoje"
             value={metrics.enviadasHoje}
+            hint="notas"
             tone="green"
           />
           <KpiCard
             label="Alocadas hoje"
             value={metrics.alocadasHoje}
+            hint="notas"
             tone="blue"
           />
           <KpiCard
             label="No prazo"
             value={`${metrics.pctNoPrazo}%`}
-            hint={`${metrics.noPrazo} cx`}
+            hint={`${metrics.noPrazo} NF`}
             tone="green"
           />
           <KpiCard
             label="Fora do prazo"
             value={`${metrics.pctForaPrazo}%`}
-            hint={`${metrics.foraPrazo} cx`}
+            hint={`${metrics.foraPrazo} NF`}
             tone="red"
           />
         </div>
@@ -60,7 +74,7 @@ export function MetricasScreen({
         <section className="mt-2.5 rounded-xl bg-white px-2.5 py-2.5 shadow-sm ring-1 ring-black/5">
           <div className="flex items-baseline justify-between gap-2">
             <p className="text-sm font-medium text-neutral-800">Volume de envios</p>
-            <p className="text-[11px] text-neutral-500">Últimos {DAYS} dias</p>
+            <p className="text-[11px] text-neutral-500">Notas · últimos {DAYS} dias</p>
           </div>
           <BarChart days={metrics.volume} today={metrics.today} />
         </section>
@@ -68,9 +82,9 @@ export function MetricasScreen({
         <div className="mt-2.5 grid gap-2.5 sm:grid-cols-2">
           <section className="rounded-xl bg-white px-2.5 py-2.5 shadow-sm ring-1 ring-black/5">
             <p className="text-sm font-medium text-neutral-800">Prazo de envio</p>
-            <p className="text-[11px] text-neutral-500">Caixas enviadas no prazo certo e errado</p>
+            <p className="text-[11px] text-neutral-500">Notas enviadas no prazo certo e errado</p>
             {metrics.enviadas === 0 ? (
-              <p className="mt-3 text-sm text-neutral-500">Nenhuma caixa enviada ainda.</p>
+              <p className="mt-3 text-sm text-neutral-500">Nenhuma nota enviada ainda.</p>
             ) : (
               <div className="mt-3 flex items-center gap-3">
                 <Donut noPrazo={metrics.pctNoPrazo} />
@@ -90,7 +104,7 @@ export function MetricasScreen({
                     <span className="font-semibold tabular-nums">{metrics.pctForaPrazo}%</span>
                   </li>
                   <li className="text-[11px] text-neutral-500">
-                    {metrics.enviadas} caixa(s) enviada(s)
+                    {metrics.enviadas} nota(s) enviada(s)
                   </li>
                 </ul>
               </div>
@@ -112,14 +126,14 @@ export function MetricasScreen({
 }
 
 function AtrasoAlert({
-  boxes,
+  notas,
 }: {
-  boxes: { id: string; notaFiscal: string; cidade: string; prazo: string }[]
+  notas: { notaFiscal: string; cidade: string; prazo: string; volumes: number }[]
 }) {
   const titulo =
-    boxes.length === 1
-      ? "1 caixa atrasada precisa ser enviada"
-      : `${boxes.length} caixas atrasadas precisam ser enviadas`
+    notas.length === 1
+      ? "1 nota atrasada precisa ser enviada"
+      : `${notas.length} notas atrasadas precisam ser enviadas`
   return (
     <section
       role="alert"
@@ -127,24 +141,27 @@ function AtrasoAlert({
     >
       <p className="text-sm font-semibold text-[#c2410c]">{titulo}</p>
       <p className="mt-0.5 text-[11px] text-neutral-600">
-        {boxes.length === 1
-          ? "O prazo já passou e a caixa ainda não saiu."
-          : "O prazo já passou e as caixas ainda não saíram."}
+        {notas.length === 1
+          ? "O prazo já passou e a nota ainda não saiu."
+          : "O prazo já passou e as notas ainda não saíram."}
       </p>
       <ul className="mt-2 flex max-h-28 flex-col gap-1.5 overflow-y-auto">
-        {boxes.map((box) => (
+        {notas.map((nota) => (
           <li
-            key={box.id}
+            key={nota.notaFiscal}
             className="rounded-lg bg-white px-2 py-1.5 ring-1 ring-[#c2410c]/15"
           >
             <div className="flex items-baseline justify-between gap-2">
-              <span className="text-sm font-medium text-neutral-800">{box.id}</span>
+              <span className="text-sm font-medium text-neutral-800">
+                NF {nota.notaFiscal}
+              </span>
               <span className="shrink-0 text-[11px] font-medium text-[#c2410c]">
-                {formatPrazo(box.prazo)}
+                {formatPrazo(nota.prazo)}
               </span>
             </div>
             <p className="mt-0.5 text-[11px] text-neutral-600">
-              NF {box.notaFiscal} · {box.cidade}
+              {nota.cidade} · {nota.volumes}{" "}
+              {nota.volumes === 1 ? "volume" : "volumes"}
             </p>
           </li>
         ))}
@@ -253,31 +270,32 @@ function Donut({ noPrazo }: { noPrazo: number }) {
 }
 
 function buildMetrics(products: Product[]) {
-  const boxes = allBoxes(products)
   const today = localDate()
-  const enviadas = boxes.filter((box) => box.expedida)
-  const pendentes = boxes.filter((box) => !box.expedida && box.notaFiscal)
-  const noPrazo = enviadas.filter((box) => onTime(box)).length
+  const notas = groupByNota(allBoxes(products), today)
+  const enviadas = notas.filter((nota) => nota.enviada)
+  const pendentes = notas.filter((nota) => !nota.enviada)
+  const noPrazo = enviadas.filter((nota) => nota.onTime).length
   const foraPrazo = enviadas.length - noPrazo
   const pctNoPrazo = percent(noPrazo, enviadas.length)
   const pctForaPrazo = enviadas.length === 0 ? 0 : 100 - pctNoPrazo
   const atrasadas = pendentes
-    .filter((box) => latePending(box, today))
-    .map((box) => ({
-      id: box.id,
-      notaFiscal: box.notaFiscal ?? "—",
-      cidade: box.cidade?.trim() || "sem cidade",
-      prazo: deadline(box),
+    .filter((nota) => nota.atrasada)
+    .map((nota) => ({
+      notaFiscal: nota.notaFiscal,
+      cidade: nota.cidade,
+      prazo: nota.prazo,
+      volumes: nota.volumes,
     }))
-    .sort((a, b) => a.prazo.localeCompare(b.prazo) || a.id.localeCompare(b.id))
+    .sort((a, b) => a.prazo.localeCompare(b.prazo) || a.notaFiscal.localeCompare(b.notaFiscal))
+
   return {
     today,
     enviadas: enviadas.length,
     pendentes: pendentes.length,
     atrasadas,
     atrasadasPendentes: atrasadas.length,
-    enviadasHoje: enviadas.filter((box) => localDate(box.enviadaEm) === today).length,
-    alocadasHoje: boxes.filter((box) => localDate(box.alocadaEm) === today).length,
+    enviadasHoje: enviadas.filter((nota) => localDate(nota.enviadaEm) === today).length,
+    alocadasHoje: notas.filter((nota) => localDate(nota.alocadaEm) === today).length,
     noPrazo,
     foraPrazo,
     pctNoPrazo,
@@ -285,9 +303,51 @@ function buildMetrics(products: Product[]) {
     volume: lastDays(DAYS, today).map((date) => ({
       date,
       label: formatShortDay(date),
-      count: enviadas.filter((box) => localDate(box.enviadaEm) === date).length,
+      count: enviadas.filter((nota) => localDate(nota.enviadaEm) === date).length,
     })),
   }
+}
+
+function groupByNota(boxes: Box[], today: string): NotaMetric[] {
+  const groups = new Map<string, Box[]>()
+  for (const box of boxes) {
+    const nf = (box.notaFiscal ?? "").trim()
+    if (!nf) continue
+    const key = nf.toLowerCase()
+    const list = groups.get(key) ?? []
+    list.push(box)
+    groups.set(key, list)
+  }
+
+  return [...groups.entries()].map(([, list]) => {
+    const first = list[0]
+    const notaFiscal = (first.notaFiscal ?? "").trim()
+    const enviada = list.every((box) => box.expedida)
+    const prazo = earliest(
+      list.map((box) => deadline(box)).filter(Boolean),
+    )
+    const alocadaEm = earliest(
+      list.map((box) => box.alocadaEm).filter(Boolean) as string[],
+    )
+    const enviadaEm = enviada
+      ? latest(list.map((box) => box.enviadaEm).filter(Boolean) as string[])
+      : ""
+    const sentDay = localDate(enviadaEm)
+    const due = prazo
+    const onTime = !enviada || !sentDay || !due || sentDay <= due
+    const atrasada = !enviada && Boolean(due) && due < today
+    return {
+      notaFiscal,
+      cidade: first.cidade?.trim() || "sem cidade",
+      prazo,
+      alocadaEm,
+      enviadaEm,
+      volumes: list.length,
+      enviada,
+      onTime,
+      atrasada,
+    }
+  })
 }
 
 function allBoxes(products: Product[]) {
@@ -300,16 +360,14 @@ function deadline(box: Box) {
   return prazoDeEnvio(box.cidade ?? "", from)
 }
 
-function onTime(box: Box) {
-  const sent = localDate(box.enviadaEm)
-  const due = deadline(box)
-  if (!sent || !due) return true
-  return sent <= due
+function earliest(values: string[]) {
+  const days = values.map((value) => localDate(value)).filter(Boolean).sort()
+  return days[0] ?? ""
 }
 
-function latePending(box: Box, today: string) {
-  const due = deadline(box)
-  return Boolean(due) && due < today
+function latest(values: string[]) {
+  const sorted = [...values].filter(Boolean).sort()
+  return sorted[sorted.length - 1] ?? ""
 }
 
 function percent(part: number, total: number) {

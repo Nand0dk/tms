@@ -34,7 +34,7 @@ export function ProductList({
   }, [products, query])
 
   return (
-    <div className="flex min-h-0 flex-1 flex-col">
+    <div className="flex min-h-0 w-full min-w-0 flex-1 flex-col">
       <header className="flex items-center justify-between gap-2 px-1 pt-4 pb-2">
         <BackButton onClick={onBack} label="Início" />
         <button
@@ -47,8 +47,8 @@ export function ProductList({
         </button>
       </header>
 
-      <div className="px-4">
-        <h1 className="text-2xl font-semibold tracking-tight">Recebimento</h1>
+      <div className="px-1">
+        <h1 className="text-xl font-semibold tracking-tight sm:text-2xl">Recebimento</h1>
         <label htmlFor="pesquisar-produto" className="sr-only">
           Pesquisar produto
         </label>
@@ -62,7 +62,7 @@ export function ProductList({
         />
       </div>
 
-      <div className="mt-3 min-h-0 flex-1 overflow-y-auto px-4 pb-[max(2rem,env(safe-area-inset-bottom))]">
+      <div className="mt-3 min-h-0 flex-1 overflow-y-auto overflow-x-hidden px-1 pb-[max(2rem,env(safe-area-inset-bottom))]">
         {products.length === 0 ? (
           <p className="rounded-2xl border border-dashed border-neutral-300 bg-white px-4 py-8 text-center text-sm text-neutral-500">
             Nenhum produto ainda.
@@ -72,17 +72,17 @@ export function ProductList({
             Nenhum produto encontrado.
           </p>
         ) : (
-          <ul className="flex flex-col gap-2">
+          <ul className="grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-3">
             {filtered.map((product) => {
               const lot = latestLot(product)
               return (
                 <li
                   key={product.codigo}
-                  className="rounded-xl bg-white px-3 py-2.5 shadow-sm ring-1 ring-black/5"
+                  className="min-w-0 rounded-xl bg-white px-3 py-2.5 shadow-sm ring-1 ring-black/5"
                 >
                   <div className="flex items-start justify-between gap-2">
-                    <div>
-                      <p className="text-sm font-semibold text-neutral-900">
+                    <div className="min-w-0">
+                      <p className="truncate text-sm font-semibold text-neutral-900">
                         {product.nome}
                       </p>
                       <p className="mt-0.5 text-xs text-neutral-500">
