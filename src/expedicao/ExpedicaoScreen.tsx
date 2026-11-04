@@ -791,7 +791,7 @@ function ExpedirForm({
       onContinue({
         notaFiscal: data.notaFiscal,
         quantidade: allocated.length,
-        posicao: data.posicao || allocated[0]?.posicao || "",
+        posicao: allocated[0]?.posicao || formatShelfLabel(data.posicao) || "",
         boxes: allocated,
       })
     } catch (caught) {
@@ -1004,6 +1004,7 @@ function ExpedirPage({
               >
                 <span>
                   {item.id} · {item.produto}
+                  {item.posicao ? ` · ${item.posicao}` : ""}
                 </span>
                 {!saved ? (
                   <button
@@ -1065,6 +1066,17 @@ function ExpedirPage({
   )
 }
 
+function formatShelfLabel(posicao?: string | null, armazemCodigo?: string | null) {
+  const place = (posicao ?? "").trim()
+  const warehouse = (armazemCodigo ?? "").trim()
+  if (!place && !warehouse) return ""
+  if (warehouse && place) {
+    const alreadyPrefixed = place.toLowerCase().startsWith(`${warehouse.toLowerCase()} `)
+    return alreadyPrefixed ? place : `${warehouse} ${place}`
+  }
+  return place || warehouse
+}
+
 function boxesForNota(products: Product[], notaFiscal: string) {
   const wanted = notaFiscal.trim().toLowerCase()
   const normalized = wanted.replace(/[\s.\-\/_]/g, "")
@@ -1082,7 +1094,7 @@ function boxesForNota(products: Product[], notaFiscal: string) {
         .map((box) => ({
           id: box.id,
           produto: product.nome,
-          posicao: box.posicao ?? "",
+          posicao: formatShelfLabel(box.posicao, box.armazemCodigo),
         })),
     ),
   )
