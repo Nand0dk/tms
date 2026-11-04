@@ -98,7 +98,7 @@ export function UsuariosScreen({
         </button>
       </header>
       <div className="px-1">
-        <h1 className="text-xl font-semibold tracking-tight sm:text-2xl">Usuários</h1>
+        <h1 className="screen-title">Usuários</h1>
         <p className="mt-1 text-sm text-neutral-600">
           Cadastre usuários e libere o acesso de cada área.
         </p>
@@ -111,7 +111,7 @@ export function UsuariosScreen({
             Nenhum usuário ainda.
           </p>
         ) : (
-          <ul className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+          <ul className="grid grid-cols-1 gap-2 sm:grid-cols-2 sm:gap-3 lg:gap-4 xl:grid-cols-3">
             {users.map((user) => (
               <li
                 key={user.usuario}
@@ -194,7 +194,7 @@ function NewUserForm({
         <BackButton onClick={onBack} />
       </header>
       <form className="flex flex-col px-1 pb-8" onSubmit={handleSubmit} noValidate>
-        <h1 className="text-xl font-semibold tracking-tight sm:text-2xl">Novo usuário</h1>
+        <h1 className="screen-title">Novo usuário</h1>
         <div className="mt-4 flex flex-col gap-3">
           <Field
             id="nome-usuario"

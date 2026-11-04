@@ -78,7 +78,7 @@ function StockList({
         <BackButton onClick={onBack} label="Início" />
       </header>
       <div className="px-1">
-        <h1 className="text-xl font-semibold tracking-tight sm:text-2xl">Estoque</h1>
+        <h1 className="screen-title">Estoque</h1>
         <label htmlFor="pesquisar-estoque" className="sr-only">
           Pesquisar estoque
         </label>
@@ -101,7 +101,7 @@ function StockList({
             Nenhum resultado encontrado.
           </p>
         ) : (
-          <ul className="grid grid-cols-1 gap-3 lg:grid-cols-2">
+          <ul className="grid grid-cols-1 gap-3 lg:grid-cols-2 lg:gap-4 xl:grid-cols-3">
             {filtered.map(({ product, boxes }) => (
               <li
                 key={product.codigo}
@@ -267,7 +267,7 @@ function PositionForm({
         onSubmit={handleSubmit}
         noValidate
       >
-        <h1 className="text-xl font-semibold tracking-tight sm:text-2xl">
+        <h1 className="screen-title">
           {box.posicao ? "Alterar posição" : "Definir posição"}
         </h1>
         <p className="mt-1 text-sm text-neutral-600">

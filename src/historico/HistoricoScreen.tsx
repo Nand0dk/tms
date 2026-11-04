@@ -36,7 +36,7 @@ export function HistoricoScreen({
         <BackButton onClick={onBack} label="Início" />
       </header>
       <div className="px-1">
-        <h1 className="text-xl font-semibold tracking-tight sm:text-2xl">Histórico</h1>
+        <h1 className="screen-title">Histórico</h1>
         <p className="mt-1 text-sm text-neutral-600">Quem adicionou ou removeu.</p>
       </div>
       <div className="mt-3 min-h-0 flex-1 overflow-y-auto px-1 pb-[max(2rem,env(safe-area-inset-bottom))]">

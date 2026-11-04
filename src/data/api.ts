@@ -119,6 +119,20 @@ export function saveAllocation(
   })
 }
 
+export function saveReallocation(
+  actor: string,
+  notaFiscal: string,
+  posicao: string,
+  armazemCodigo?: string,
+) {
+  return send("/api/reallocations", {
+    actor,
+    notaFiscal,
+    posicao,
+    armazemCodigo,
+  })
+}
+
 export function saveWarehouse(actor: string, warehouse: Pick<Warehouse, "codigo" | "nome">) {
   return send("/api/warehouses", { actor, ...warehouse })
 }

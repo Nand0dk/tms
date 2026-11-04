@@ -1,4 +1,4 @@
-import { useMemo } from "react"
+import { useEffect, useMemo, useState } from "react"
 import { BackButton } from "../recebimento/BackButton"
 import type { Box, Product } from "../recebimento/types"
 import { formatPrazo, prazoDeEnvio } from "./rotas"
@@ -34,8 +34,8 @@ export function MetricasScreen({
         <BackButton onClick={onBack} />
       </header>
       <div className="min-h-0 flex-1 overflow-y-auto overflow-x-hidden px-1 pb-[max(1.5rem,env(safe-area-inset-bottom))]">
-        <h1 className="text-xl font-semibold tracking-tight sm:text-2xl">Métricas</h1>
-        <p className="mt-0.5 text-xs text-neutral-600 sm:text-sm">
+        <h1 className="screen-title">Métricas</h1>
+        <p className="mt-0.5 text-xs text-neutral-600 sm:text-sm lg:text-base">
           Envios por nota fiscal · {todayLabel}
         </p>
 
@@ -45,7 +45,7 @@ export function MetricasScreen({
           </div>
         ) : null}
 
-        <div className="mt-2.5 grid grid-cols-2 gap-1.5 sm:gap-2 lg:grid-cols-4">
+        <div className="mt-2.5 grid grid-cols-2 gap-1.5 sm:gap-2 lg:mt-4 lg:grid-cols-4 lg:gap-3">
           <KpiCard
             label="Enviadas hoje"
             value={metrics.enviadasHoje}
@@ -153,48 +153,158 @@ export function MetricasScreen({
   )
 }
 
-function AtrasoAlert({
-  notas,
-}: {
-  notas: { notaFiscal: string; cidade: string; prazo: string; volumes: number }[]
-}) {
+type AtrasoNota = {
+  notaFiscal: string
+  cidade: string
+  prazo: string
+  volumes: number
+}
+
+function AtrasoAlert({ notas }: { notas: AtrasoNota[] }) {
+  const [open, setOpen] = useState(false)
   const titulo =
     notas.length === 1
       ? "1 nota atrasada precisa ser enviada"
       : `${notas.length} notas atrasadas precisam ser enviadas`
+  const subtitulo =
+    notas.length === 1
+      ? "O prazo já passou e a nota ainda não saiu."
+      : "O prazo já passou e as notas ainda não saíram."
+
+  useEffect(() => {
+    if (!open) return
+    const onKey = (event: KeyboardEvent) => {
+      if (event.key === "Escape") setOpen(false)
+    }
+    window.addEventListener("keydown", onKey)
+    const prev = document.body.style.overflow
+    document.body.style.overflow = "hidden"
+    return () => {
+      window.removeEventListener("keydown", onKey)
+      document.body.style.overflow = prev
+    }
+  }, [open])
+
   return (
-    <section
-      role="alert"
-      className="rounded-xl bg-[#fff7ed] px-2.5 py-2 shadow-sm ring-1 ring-[#c2410c]/50"
-    >
-      <p className="text-sm font-semibold text-[#c2410c]">{titulo}</p>
-      <p className="mt-0.5 text-[11px] text-neutral-600">
-        {notas.length === 1
-          ? "O prazo já passou e a nota ainda não saiu."
-          : "O prazo já passou e as notas ainda não saíram."}
-      </p>
-      <ul className="mt-2 flex max-h-28 flex-col gap-1.5 overflow-y-auto">
-        {notas.map((nota) => (
-          <li
-            key={nota.notaFiscal}
-            className="rounded-lg bg-white px-2 py-1.5 ring-1 ring-[#c2410c]/15"
+    <>
+      <button
+        type="button"
+        role="alert"
+        onClick={() => setOpen(true)}
+        aria-haspopup="dialog"
+        aria-expanded={open}
+        className="flex w-full items-start gap-2 rounded-xl bg-[#fff7ed] px-2.5 py-2 text-left shadow-sm ring-1 ring-[#c2410c]/50 transition active:bg-[#ffedd5]"
+      >
+        <span className="min-w-0 flex-1">
+          <span className="block text-sm font-semibold text-[#c2410c]">{titulo}</span>
+          <span className="mt-0.5 block text-[11px] text-neutral-600">{subtitulo}</span>
+          <span className="mt-1 block text-[11px] font-medium text-[#c2410c]/80">
+            Toque para ver detalhes
+          </span>
+        </span>
+        <span
+          className="mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-[#c2410c]"
+          aria-hidden="true"
+        >
+          <svg viewBox="0 0 24 24" className="h-5 w-5">
+            <path
+              d="M9 5l7 7-7 7"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="2.2"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+            />
+          </svg>
+        </span>
+      </button>
+
+      {open ? (
+        <div
+          className="fixed inset-0 z-50 flex items-end justify-center sm:items-center sm:p-4"
+          role="presentation"
+        >
+          <button
+            type="button"
+            aria-label="Fechar"
+            className="absolute inset-0 bg-black/40"
+            onClick={() => setOpen(false)}
+          />
+          <div
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="atraso-panel-title"
+            className="relative z-10 flex max-h-[min(85vh,36rem)] w-full max-w-lg flex-col rounded-t-2xl bg-[#fff7ed] shadow-xl ring-1 ring-[#c2410c]/30 sm:rounded-2xl"
           >
-            <div className="flex items-baseline justify-between gap-2">
-              <span className="text-sm font-medium text-neutral-800">
-                NF {nota.notaFiscal}
-              </span>
-              <span className="shrink-0 text-[11px] font-medium text-[#c2410c]">
-                {formatPrazo(nota.prazo)}
-              </span>
+            <div className="flex items-start gap-2 border-b border-[#c2410c]/15 px-2.5 py-2 sm:px-3">
+              <button
+                type="button"
+                onClick={() => setOpen(false)}
+                aria-label="Voltar"
+                className="mt-0.5 flex h-10 w-10 shrink-0 items-center justify-center rounded-full text-[#c2410c] hover:bg-[#c2410c]/10"
+              >
+                <svg viewBox="0 0 24 24" className="h-5 w-5" aria-hidden="true">
+                  <path
+                    d="M15 5 8 12l7 7"
+                    fill="none"
+                    stroke="currentColor"
+                    strokeWidth="2.2"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                  />
+                </svg>
+              </button>
+              <div className="min-w-0 flex-1 pt-1.5 pb-1">
+                <p
+                  id="atraso-panel-title"
+                  className="text-sm font-semibold text-[#c2410c]"
+                >
+                  {titulo}
+                </p>
+                <p className="mt-0.5 text-[11px] text-neutral-600">{subtitulo}</p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setOpen(false)}
+                aria-label="Fechar"
+                className="mt-0.5 flex h-10 w-10 shrink-0 items-center justify-center rounded-full text-[#c2410c] hover:bg-[#c2410c]/10"
+              >
+                <svg viewBox="0 0 24 24" className="h-5 w-5" aria-hidden="true">
+                  <path
+                    d="M6 6l12 12M18 6 6 18"
+                    fill="none"
+                    stroke="currentColor"
+                    strokeWidth="2.2"
+                    strokeLinecap="round"
+                  />
+                </svg>
+              </button>
             </div>
-            <p className="mt-0.5 text-[11px] text-neutral-600">
-              {nota.cidade} · {nota.volumes}{" "}
-              {nota.volumes === 1 ? "volume" : "volumes"}
-            </p>
-          </li>
-        ))}
-      </ul>
-    </section>
+            <ul className="flex min-h-0 flex-1 flex-col gap-1.5 overflow-y-auto px-2.5 py-2.5 pb-[max(0.75rem,env(safe-area-inset-bottom))] sm:px-3">
+              {notas.map((nota) => (
+                <li
+                  key={nota.notaFiscal}
+                  className="rounded-xl bg-white px-2.5 py-2 shadow-sm ring-1 ring-[#c2410c]/15"
+                >
+                  <div className="flex items-baseline justify-between gap-2">
+                    <span className="text-sm font-medium text-neutral-800">
+                      NF {nota.notaFiscal}
+                    </span>
+                    <span className="shrink-0 text-[11px] font-medium text-[#c2410c]">
+                      {formatPrazo(nota.prazo)}
+                    </span>
+                  </div>
+                  <p className="mt-0.5 text-[11px] text-neutral-600">
+                    {nota.cidade} · {nota.volumes}{" "}
+                    {nota.volumes === 1 ? "volume" : "volumes"}
+                  </p>
+                </li>
+              ))}
+            </ul>
+          </div>
+        </div>
+      ) : null}
+    </>
   )
 }
 

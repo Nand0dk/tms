@@ -10,11 +10,11 @@ export function RotasScreen({ onBack }: { onBack: () => void }) {
         <BackButton onClick={onBack} />
       </header>
       <div className="min-h-0 flex-1 overflow-y-auto px-1 pb-[max(2rem,env(safe-area-inset-bottom))]">
-        <h1 className="text-xl font-semibold tracking-tight sm:text-2xl">Cidades</h1>
+        <h1 className="screen-title">Cidades</h1>
         <p className="mt-1 text-sm text-neutral-600">
           Cidades que saem em cada dia da semana.
         </p>
-        <div className="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
+        <div className="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-2 sm:gap-4 lg:grid-cols-3 lg:gap-4 xl:grid-cols-4">
           {ROTAS.map((rota) => {
             const hojeNestaRota = rota.dias.includes(hoje)
             return (

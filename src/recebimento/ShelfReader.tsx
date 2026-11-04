@@ -1,6 +1,25 @@
 import { useEffect, useRef, useState } from "react"
 import { BrowserMultiFormatReader } from "@zxing/browser"
 
+type TorchCapabilities = MediaTrackCapabilities & { torch?: boolean }
+
+async function setTorch(track: MediaStreamTrack | null, on: boolean) {
+  if (!track || track.readyState !== "live") return
+  try {
+    const caps = track.getCapabilities?.() as TorchCapabilities | undefined
+    if (!caps?.torch) return
+    await track.applyConstraints({ advanced: [{ torch: on }] })
+  } catch {
+    // Desktop / unsupported devices — ignore
+  }
+}
+
+function getVideoTrack(video: HTMLVideoElement | null): MediaStreamTrack | null {
+  const stream = video?.srcObject
+  if (!(stream instanceof MediaStream)) return null
+  return stream.getVideoTracks()[0] ?? null
+}
+
 export function ShelfReader({
   onRead,
   label = "Ler código da prateleira",
@@ -25,9 +44,23 @@ export function ShelfReader({
 
     let stopped = false
     let controls: { stop: () => void } | null = null
+    let videoTrack: MediaStreamTrack | null = null
     let lastText = ""
     let lastAt = 0
     const reader = new BrowserMultiFormatReader()
+
+    const stopCamera = () => {
+      const track = videoTrack
+      videoTrack = null
+      void setTorch(track, false).finally(() => {
+        controls?.stop()
+        track?.stop()
+        if (video.srcObject instanceof MediaStream) {
+          for (const t of video.srcObject.getTracks()) t.stop()
+          video.srcObject = null
+        }
+      })
+    }
 
     reader
       .decodeFromConstraints(
@@ -44,13 +77,18 @@ export function ShelfReader({
           onReadRef.current(text)
           if (continuousRef.current) return
           stopped = true
-          controls?.stop()
+          stopCamera()
           setOpen(false)
         },
       )
       .then((next) => {
         controls = next
-        if (stopped) next.stop()
+        if (stopped) {
+          stopCamera()
+          return
+        }
+        videoTrack = getVideoTrack(video)
+        void setTorch(videoTrack, true)
       })
       .catch(() => {
         if (!stopped) {
@@ -61,7 +99,7 @@ export function ShelfReader({
 
     return () => {
       stopped = true
-      controls?.stop()
+      stopCamera()
     }
   }, [open])
 

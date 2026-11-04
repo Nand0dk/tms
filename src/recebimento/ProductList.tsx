@@ -48,7 +48,7 @@ export function ProductList({
       </header>
 
       <div className="px-1">
-        <h1 className="text-xl font-semibold tracking-tight sm:text-2xl">Recebimento</h1>
+        <h1 className="screen-title">Recebimento</h1>
         <label htmlFor="pesquisar-produto" className="sr-only">
           Pesquisar produto
         </label>
@@ -72,7 +72,7 @@ export function ProductList({
             Nenhum produto encontrado.
           </p>
         ) : (
-          <ul className="grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-3">
+          <ul className="grid grid-cols-1 gap-2 sm:grid-cols-2 sm:gap-3 lg:grid-cols-3 lg:gap-4 xl:grid-cols-4">
             {filtered.map((product) => {
               const lot = latestLot(product)
               return (

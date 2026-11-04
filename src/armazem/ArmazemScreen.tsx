@@ -214,7 +214,7 @@ function WarehouseList({
         </button>
       </header>
       <div className="px-1">
-        <h1 className="text-xl font-semibold tracking-tight sm:text-2xl">Armazém</h1>
+        <h1 className="screen-title">Armazém</h1>
         <label htmlFor="pesquisar-armazem" className="sr-only">
           Pesquisar armazém
         </label>
@@ -237,7 +237,7 @@ function WarehouseList({
             Nenhum armazém encontrado.
           </p>
         ) : (
-          <ul className="grid grid-cols-1 gap-2 lg:grid-cols-2">
+          <ul className="grid grid-cols-1 gap-2 sm:gap-3 lg:grid-cols-2 lg:gap-4 xl:grid-cols-3">
             {filtered.map((warehouse) => (
               <li
                 key={warehouse.codigo}
@@ -505,7 +505,7 @@ function RegisterBoxForm({
         onSubmit={handleSubmit}
         noValidate
       >
-        <h1 className="text-xl font-semibold tracking-tight sm:text-2xl">Registrar caixas</h1>
+        <h1 className="screen-title">Registrar caixas</h1>
         <p className="mt-1 text-sm text-neutral-600">
           {warehouse.codigo} · {warehouse.nome}
         </p>
@@ -749,7 +749,7 @@ function NewWarehouseForm({
         <BackButton onClick={onBack} />
       </header>
       <form className="flex flex-col px-1 pb-8" onSubmit={handleSubmit} noValidate>
-        <h1 className="text-xl font-semibold tracking-tight sm:text-2xl">Novo armazém</h1>
+        <h1 className="screen-title">Novo armazém</h1>
         <div className="mt-4 flex flex-col gap-3">
           <Field
             id="codigo-armazem"
@@ -830,7 +830,7 @@ function NewShelfForm({
         <BackButton onClick={onBack} />
       </header>
       <form className="flex flex-col px-1 pb-8" onSubmit={handleSubmit} noValidate>
-        <h1 className="text-xl font-semibold tracking-tight sm:text-2xl">Nova prateleira</h1>
+        <h1 className="screen-title">Nova prateleira</h1>
         <p className="mt-1 text-sm text-neutral-600">
           {warehouse.codigo} · {warehouse.nome}
         </p>
@@ -919,7 +919,7 @@ function AddPositionsForm({
         <BackButton onClick={onBack} />
       </header>
       <form className="flex flex-col px-1 pb-8" onSubmit={handleSubmit} noValidate>
-        <h1 className="text-xl font-semibold tracking-tight sm:text-2xl">Adicionar posições</h1>
+        <h1 className="screen-title">Adicionar posições</h1>
         <p className="mt-1 text-sm text-neutral-600">
           {warehouse.codigo} · Prateleira {prateleira}
         </p>

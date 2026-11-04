@@ -48,7 +48,7 @@ export function NewProductForm({
         onSubmit={handleSubmit}
         noValidate
       >
-        <h1 className="text-xl font-semibold tracking-tight sm:text-2xl">Novo produto</h1>
+        <h1 className="screen-title">Novo produto</h1>
 
         <div className="mt-4 flex flex-col gap-3">
           <Field

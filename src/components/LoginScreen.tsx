@@ -40,8 +40,8 @@ export function LoginScreen() {
 
   return (
     <div className="flex min-h-dvh flex-col overflow-x-hidden bg-[#f4f6f3]">
-      <div className="flex flex-1 items-center justify-center px-3 py-8 sm:px-6 sm:py-10">
-        <div className="w-full max-w-sm">
+      <div className="flex flex-1 items-center justify-center px-3 py-8 sm:px-6 sm:py-10 lg:py-12">
+        <div className="w-full max-w-sm lg:max-w-md">
           <div className="flex justify-center">
             <Logo className="h-20 w-auto sm:h-24" />
           </div>

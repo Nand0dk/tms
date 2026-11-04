@@ -4,10 +4,19 @@ import { BackButton } from "../recebimento/BackButton"
 import { Field } from "../recebimento/Field"
 import { positionFromSearch } from "../recebimento/format"
 import { ShelfReader } from "../recebimento/ShelfReader"
-import type { Product } from "../recebimento/types"
+import type { Box, Product } from "../recebimento/types"
 import { MetricasScreen } from "./MetricasScreen"
 import { CIDADES, formatPrazo, prazoDeEnvio, rotaDaCidade } from "./rotas"
 import { RotasScreen } from "./RotasScreen"
+
+const DIAS_SEMANA = [
+  { value: null as number | null, label: "Todos" },
+  { value: 1, label: "Segunda" },
+  { value: 2, label: "Terça" },
+  { value: 3, label: "Quarta" },
+  { value: 4, label: "Quinta" },
+  { value: 5, label: "Sexta" },
+]
 
 type PendingBox = {
   id: string
@@ -22,11 +31,19 @@ type ExpeditionDraft = {
   boxes: PendingBox[]
 }
 
-type ExpedicaoView = "menu" | "alocar" | "expedir" | "buscar" | "metricas" | "cidades"
+type ExpedicaoView =
+  | "menu"
+  | "alocar"
+  | "realocar"
+  | "expedir"
+  | "buscar"
+  | "metricas"
+  | "cidades"
 
 export function ExpedicaoScreen({
   products,
   onAllocate,
+  onReallocate,
   onShip,
   onBack,
 }: {
@@ -37,6 +54,11 @@ export function ExpedicaoScreen({
     posicao: string,
     armazemCodigo?: string,
     cidade?: string,
+  ) => void | Promise<void>
+  onReallocate: (
+    notaFiscal: string,
+    posicao: string,
+    armazemCodigo?: string,
   ) => void | Promise<void>
   onShip: (
     boxIds: string[],
@@ -74,8 +96,10 @@ export function ExpedicaoScreen({
   if (view === "buscar") {
     return (
       <BuscarNotaFiscal
+        products={products}
         onBack={() => setView("menu")}
         onFound={setNotaLookup}
+        onExpedir={setDraft}
       />
     )
   }
@@ -85,6 +109,16 @@ export function ExpedicaoScreen({
       <AlocarForm
         onBack={() => setView("menu")}
         onAllocate={onAllocate}
+        onDone={() => setView("menu")}
+      />
+    )
+  }
+
+  if (view === "realocar") {
+    return (
+      <RealocarForm
+        onBack={() => setView("menu")}
+        onReallocate={onReallocate}
         onDone={() => setView("menu")}
       />
     )
@@ -115,6 +149,7 @@ export function ExpedicaoScreen({
       products={products}
       onBack={onBack}
       onAlocar={() => setView("alocar")}
+      onRealocar={() => setView("realocar")}
       onExpedir={() => setView("expedir")}
       onBuscar={() => setView("buscar")}
       onMetricas={() => setView("metricas")}
@@ -127,6 +162,7 @@ function ExpedicaoMenu({
   products,
   onBack,
   onAlocar,
+  onRealocar,
   onExpedir,
   onBuscar,
   onMetricas,
@@ -135,6 +171,7 @@ function ExpedicaoMenu({
   products: Product[]
   onBack: () => void
   onAlocar: () => void
+  onRealocar: () => void
   onExpedir: () => void
   onBuscar: () => void
   onMetricas: () => void
@@ -144,47 +181,54 @@ function ExpedicaoMenu({
 
   return (
     <div className="flex min-h-0 w-full min-w-0 flex-1 flex-col">
-      <header className="flex items-center px-1 pt-4 pb-2">
+      <header className="screen-pad flex items-center px-1 pt-4 pb-2">
         <BackButton onClick={onBack} label="Início" />
       </header>
       <div className="min-h-0 flex-1 overflow-y-auto px-1 pb-[max(2rem,env(safe-area-inset-bottom))]">
-        <h1 className="text-xl font-semibold tracking-tight sm:text-2xl">Expedição</h1>
-        <p className="mt-1 text-sm text-neutral-600">
-          Alocar caixas, enviar ou consultar uma nota fiscal.
+        <h1 className="screen-title">Expedição</h1>
+        <p className="mt-1 text-sm text-neutral-600 lg:text-base">
+          Alocar, realocar, enviar ou consultar uma nota fiscal.
         </p>
-        <div className="mt-5 grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
+        <div className="mt-5 grid grid-cols-1 gap-3 sm:grid-cols-2 sm:gap-4 lg:mt-6 lg:grid-cols-3 lg:gap-4 xl:gap-5">
           <button
             type="button"
             onClick={onAlocar}
-            className="w-full rounded-xl bg-[#1f6b28] px-3 py-3 text-sm font-semibold text-white"
+            className="w-full rounded-xl bg-[#1f6b28] px-3 py-3 text-sm font-semibold text-white lg:px-4 lg:py-4 lg:text-base"
           >
             Alocar
           </button>
           <button
             type="button"
+            onClick={onRealocar}
+            className="w-full rounded-xl border border-[#1f6b28] px-3 py-3 text-sm font-medium text-[#1f6b28] lg:px-4 lg:py-4 lg:text-base"
+          >
+            Realocar
+          </button>
+          <button
+            type="button"
             onClick={onExpedir}
-            className="w-full rounded-xl border border-[#1f6b28] px-3 py-3 text-sm font-medium text-[#1f6b28]"
+            className="w-full rounded-xl border border-[#1f6b28] px-3 py-3 text-sm font-medium text-[#1f6b28] lg:px-4 lg:py-4 lg:text-base"
           >
             Enviar
           </button>
           <button
             type="button"
             onClick={onBuscar}
-            className="w-full rounded-xl border border-neutral-300 bg-white px-3 py-3 text-sm font-medium text-neutral-800"
+            className="w-full rounded-xl border border-neutral-300 bg-white px-3 py-3 text-sm font-medium text-neutral-800 lg:px-4 lg:py-4 lg:text-base"
           >
             Buscar nota fiscal
           </button>
           <button
             type="button"
             onClick={onMetricas}
-            className="w-full rounded-xl border border-neutral-300 bg-white px-3 py-3 text-sm font-medium text-neutral-800"
+            className="w-full rounded-xl border border-neutral-300 bg-white px-3 py-3 text-sm font-medium text-neutral-800 lg:px-4 lg:py-4 lg:text-base"
           >
             Métricas
           </button>
           <button
             type="button"
             onClick={onCidades}
-            className="w-full rounded-xl border border-neutral-300 bg-white px-3 py-3 text-sm font-medium text-neutral-800 sm:col-span-2 lg:col-span-1"
+            className="w-full rounded-xl border border-neutral-300 bg-white px-3 py-3 text-sm font-medium text-neutral-800 sm:col-span-2 lg:col-span-1 lg:px-4 lg:py-4 lg:text-base"
           >
             Cidades
           </button>
@@ -210,15 +254,33 @@ function ExpedicaoMenu({
 }
 
 function BuscarNotaFiscal({
+  products,
   onBack,
   onFound,
+  onExpedir,
 }: {
+  products: Product[]
   onBack: () => void
   onFound: (data: NotaFiscalLookup) => void
+  onExpedir: (draft: ExpeditionDraft) => void
 }) {
   const [notaFiscal, setNotaFiscal] = useState("")
+  const [diaFiltro, setDiaFiltro] = useState<number | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [searching, setSearching] = useState(false)
+
+  const query = notaFiscal.trim().toLowerCase()
+  const queryNorm = query.replace(/[\s.\-\/_]/g, "")
+  const pendentes = pendingNotas(products).filter((nota) => {
+    if (!matchesWeekdayFilter(nota, diaFiltro)) return false
+    if (!query) return true
+    const nf = nota.notaFiscal.toLowerCase()
+    const nfNorm = nf.replace(/[\s.\-\/_]/g, "")
+    return (
+      nf.includes(query) ||
+      (Boolean(queryNorm) && nfNorm.includes(queryNorm))
+    )
+  })
 
   async function handleSearch(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
@@ -237,6 +299,21 @@ function BuscarNotaFiscal({
     setSearching(false)
   }
 
+  function openEnviar(invoice: string) {
+    setError(null)
+    const allocated = boxesForNota(products, invoice)
+    if (allocated.length === 0) {
+      setError("Nenhuma caixa alocada nesta nota fiscal.")
+      return
+    }
+    onExpedir({
+      notaFiscal: invoice,
+      quantidade: allocated.length,
+      posicao: allocated[0]?.posicao || "",
+      boxes: allocated,
+    })
+  }
+
   return (
     <form
       className="flex min-h-0 w-full min-w-0 flex-1 flex-col"
@@ -247,10 +324,39 @@ function BuscarNotaFiscal({
         <BackButton onClick={onBack} />
       </header>
       <div className="min-h-0 flex-1 overflow-y-auto px-1 pb-[max(2rem,env(safe-area-inset-bottom))]">
-        <h1 className="text-xl font-semibold tracking-tight sm:text-2xl">Buscar nota fiscal</h1>
+        <h1 className="screen-title">Buscar nota fiscal</h1>
         <p className="mt-1 text-sm text-neutral-600">
-          Informe o número da NF para ver onde as caixas estão e quem posicionou.
+          Filtre pelo dia da rota ou digite o número. Toque numa NF pendente para
+          enviar.
         </p>
+
+        <div className="mt-4">
+          <p className="text-sm font-medium text-neutral-800">Dia da rota</p>
+          <div className="mt-2 flex gap-2 overflow-x-auto pb-1">
+            {DIAS_SEMANA.map((dia) => {
+              const selected = diaFiltro === dia.value
+              return (
+                <button
+                  key={dia.label}
+                  type="button"
+                  aria-pressed={selected}
+                  onClick={() => {
+                    setDiaFiltro(dia.value)
+                    setError(null)
+                  }}
+                  className={
+                    selected
+                      ? "shrink-0 rounded-full bg-[#1f6b28] px-3 py-1.5 text-sm font-semibold text-white"
+                      : "shrink-0 rounded-full border border-neutral-300 bg-white px-3 py-1.5 text-sm font-medium text-neutral-800"
+                  }
+                >
+                  {dia.label}
+                </button>
+              )
+            })}
+          </div>
+        </div>
+
         <div className="mt-4 flex flex-col gap-3">
           <Field
             id="buscar-nota-fiscal"
@@ -267,14 +373,193 @@ function BuscarNotaFiscal({
             disabled={searching}
             className="w-full rounded-xl bg-[#1f6b28] px-3 py-2.5 text-sm font-semibold text-white disabled:opacity-60"
           >
-            {searching ? "Buscando…" : "Buscar"}
+            {searching ? "Buscando…" : "Ver histórico"}
           </button>
+        </div>
+
+        {error ? (
+          <p role="alert" className="mt-3 text-sm text-red-700">
+            {error}
+          </p>
+        ) : null}
+
+        <div className="mt-5">
+          <p className="text-sm font-medium text-neutral-800">
+            {pendentes.length === 0
+              ? "Nenhuma NF pendente"
+              : pendentes.length === 1
+                ? "1 NF pendente"
+                : `${pendentes.length} NFs pendentes`}
+            {diaFiltro !== null
+              ? ` · ${DIAS_SEMANA.find((d) => d.value === diaFiltro)?.label ?? ""}`
+              : ""}
+          </p>
+          {pendentes.length === 0 ? (
+            <p className="mt-2 rounded-xl border border-dashed border-neutral-300 bg-white px-4 py-6 text-center text-sm text-neutral-500">
+              Nenhuma nota alocada para este filtro.
+            </p>
+          ) : (
+            <ul className="mt-2 flex flex-col gap-2">
+              {pendentes.map((nota) => (
+                <li key={nota.notaFiscal}>
+                  <button
+                    type="button"
+                    onClick={() => openEnviar(nota.notaFiscal)}
+                    className="w-full rounded-xl bg-white px-3 py-3 text-left shadow-sm ring-1 ring-black/5 transition hover:bg-neutral-50"
+                  >
+                    <div className="flex items-start justify-between gap-2">
+                      <div className="min-w-0">
+                        <p className="text-sm font-semibold text-neutral-900">
+                          NF {nota.notaFiscal}
+                        </p>
+                        <p className="mt-0.5 text-sm text-neutral-700">
+                          {nota.cidade}
+                        </p>
+                      </div>
+                      <span className="shrink-0 text-xs font-medium text-[#1f6b28]">
+                        Enviar
+                      </span>
+                    </div>
+                    <p className="mt-1.5 text-sm text-neutral-600">
+                      {nota.prazo ? `Prazo ${formatPrazo(nota.prazo)} · ` : ""}
+                      {nota.volumes === 1
+                        ? "1 volume"
+                        : `${nota.volumes} volumes`}
+                    </p>
+                  </button>
+                </li>
+              ))}
+            </ul>
+          )}
+        </div>
+      </div>
+    </form>
+  )
+}
+
+function RealocarForm({
+  onBack,
+  onReallocate,
+  onDone,
+}: {
+  onBack: () => void
+  onReallocate: (
+    notaFiscal: string,
+    posicao: string,
+    armazemCodigo?: string,
+  ) => void | Promise<void>
+  onDone: () => void
+}) {
+  const [notaFiscal, setNotaFiscal] = useState("")
+  const [posicao, setPosicao] = useState("")
+  const [armazemCodigo, setArmazemCodigo] = useState("")
+  const [error, setError] = useState<string | null>(null)
+  const [saving, setSaving] = useState(false)
+  const [saved, setSaved] = useState<string | null>(null)
+
+  function loadFromShelf(code: string) {
+    const parsed = positionFromSearch(code.trim())
+    const position = parsed?.codigo || code.trim()
+    if (!position) {
+      setError("Informe a nova posição.")
+      return
+    }
+    setPosicao(position)
+    setArmazemCodigo(parsed?.armazem ?? "")
+    setError(null)
+  }
+
+  async function handleSubmit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault()
+    if (saved) {
+      onDone()
+      return
+    }
+    const invoice = notaFiscal.trim()
+    const parsed = positionFromSearch(posicao.trim())
+    const position = parsed?.codigo || posicao.trim()
+    const warehouse = armazemCodigo.trim() || parsed?.armazem || undefined
+    if (!invoice) {
+      setError("Informe a nota fiscal.")
+      return
+    }
+    if (!position) {
+      setError("Informe a nova posição.")
+      return
+    }
+    setSaving(true)
+    setError(null)
+    try {
+      await onReallocate(invoice, position, warehouse)
+      setSaved(`Nota ${invoice} realocada para ${position}.`)
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : "Não foi possível realocar.")
+    }
+    setSaving(false)
+  }
+
+  return (
+    <form
+      className="flex min-h-0 w-full min-w-0 flex-1 flex-col"
+      onSubmit={(event) => void handleSubmit(event)}
+      noValidate
+    >
+      <header className="flex items-center px-1 pt-4 pb-2">
+        <BackButton onClick={saved ? onDone : onBack} />
+      </header>
+      <div className="min-h-0 flex-1 overflow-y-auto px-1 pb-[max(2rem,env(safe-area-inset-bottom))]">
+        <h1 className="screen-title">Realocar</h1>
+        <p className="mt-1 text-sm text-neutral-600">
+          Digite a nota fiscal e leia o código da nova posição para mover as
+          caixas.
+        </p>
+        <div className="mt-4 flex flex-col gap-3">
+          <Field
+            id="realocar-nota-fiscal"
+            label="Nota fiscal"
+            value={notaFiscal}
+            placeholder="Número da NF"
+            onChange={(value) => {
+              setNotaFiscal(value)
+              setSaved(null)
+              setError(null)
+            }}
+          />
+          <Field
+            id="realocar-posicao"
+            label="Nova posição"
+            value={posicao}
+            placeholder="ex.: A-01"
+            onChange={(value) => {
+              setPosicao(value)
+              setArmazemCodigo("")
+              setSaved(null)
+              setError(null)
+            }}
+          />
+          {!saved ? (
+            <ShelfReader label="Ler código da nova posição" onRead={loadFromShelf} />
+          ) : null}
         </div>
         {error ? (
           <p role="alert" className="mt-3 text-sm text-red-700">
             {error}
           </p>
         ) : null}
+        {saved ? <p className="mt-3 text-sm text-[#1f6b28]">{saved}</p> : null}
+        <div className="mt-5">
+          <button
+            type="submit"
+            disabled={saving}
+            className="w-full rounded-xl bg-[#1f6b28] px-3 py-2.5 text-sm font-semibold text-white disabled:opacity-60"
+          >
+            {saved
+              ? "Voltar à expedição"
+              : saving
+                ? "Salvando…"
+                : "Salvar realocação"}
+          </button>
+        </div>
       </div>
     </form>
   )
@@ -370,7 +655,7 @@ function AlocarForm({
         <BackButton onClick={saved ? onDone : onBack} />
       </header>
       <div className="min-h-0 flex-1 overflow-y-auto px-1 pb-[max(2rem,env(safe-area-inset-bottom))]">
-        <h1 className="text-xl font-semibold tracking-tight sm:text-2xl">Alocar</h1>
+        <h1 className="screen-title">Alocar</h1>
         <p className="mt-1 text-sm text-neutral-600">
           Informe a nota, a quantidade, a posição e a cidade. Escolha na lista
           ou digite. Na lista, o prazo é o próximo dia de saída. Sem cidade,
@@ -525,7 +810,7 @@ function ExpedirForm({
         <BackButton onClick={onBack} />
       </header>
       <div className="min-h-0 flex-1 overflow-y-auto px-1 pb-[max(2rem,env(safe-area-inset-bottom))]">
-        <h1 className="text-xl font-semibold tracking-tight sm:text-2xl">Enviar</h1>
+        <h1 className="screen-title">Enviar</h1>
         <p className="mt-1 text-sm text-neutral-600">
           Informe a nota fiscal já alocada para confirmar a saída.
         </p>
@@ -573,7 +858,7 @@ function NotaFiscalHistorico({
         <BackButton onClick={onBack} />
       </header>
       <div className="min-h-0 flex-1 overflow-y-auto px-1 pb-[max(2rem,env(safe-area-inset-bottom))]">
-        <h1 className="text-xl font-semibold tracking-tight sm:text-2xl">Histórico da nota</h1>
+        <h1 className="screen-title">Histórico da nota</h1>
         <div className="mt-3 rounded-xl bg-white px-3 py-3 shadow-sm ring-1 ring-black/5">
           <p className="text-sm text-neutral-600">Nota fiscal</p>
           <p className="text-base font-semibold">{data.notaFiscal}</p>
@@ -691,7 +976,7 @@ function ExpedirPage({
         <BackButton onClick={saved ? onDone : onBack} />
       </header>
       <div className="min-h-0 flex-1 overflow-y-auto px-1 pb-[max(2rem,env(safe-area-inset-bottom))]">
-        <h1 className="text-xl font-semibold tracking-tight sm:text-2xl">Confirmar envio</h1>
+        <h1 className="screen-title">Confirmar envio</h1>
         <p className="mt-1 text-sm text-neutral-600">
           Confira os dados e confirme para registrar a saída.
         </p>
@@ -801,6 +1086,88 @@ function boxesForNota(products: Product[], notaFiscal: string) {
         })),
     ),
   )
+}
+
+type PendingNotaResumo = {
+  notaFiscal: string
+  cidade: string
+  prazo: string
+  volumes: number
+}
+
+/** Active (not shipped) NFs grouped like métricas — prazo from box.prazo or rota. */
+function pendingNotas(products: Product[]): PendingNotaResumo[] {
+  const byNota = new Map<
+    string,
+    { notaFiscal: string; cidade: string; prazos: string[]; volumes: number }
+  >()
+  for (const product of products) {
+    for (const lot of product.lots) {
+      for (const box of lot.boxes) {
+        if (box.expedida) continue
+        const notaFiscal = (box.notaFiscal ?? "").trim()
+        if (!notaFiscal) continue
+        const key = notaFiscal.toLowerCase()
+        const prazo = deadlineForBox(box)
+        const cidade = (box.cidade ?? "").trim()
+        const existing = byNota.get(key)
+        if (!existing) {
+          byNota.set(key, {
+            notaFiscal,
+            cidade: cidade || "sem cidade",
+            prazos: prazo ? [prazo] : [],
+            volumes: 1,
+          })
+          continue
+        }
+        existing.volumes += 1
+        if (cidade && existing.cidade === "sem cidade") existing.cidade = cidade
+        if (prazo) existing.prazos.push(prazo)
+      }
+    }
+  }
+  return [...byNota.values()]
+    .map((value) => {
+      const prazos = value.prazos.slice().sort()
+      return {
+        notaFiscal: value.notaFiscal,
+        cidade: value.cidade,
+        prazo: prazos[0] ?? "",
+        volumes: value.volumes,
+      }
+    })
+    .sort(
+      (a, b) =>
+        a.prazo.localeCompare(b.prazo) ||
+        a.notaFiscal.localeCompare(b.notaFiscal, "pt-BR"),
+    )
+}
+
+function deadlineForBox(box: Box) {
+  if (box.prazo) return isoDayFromValue(box.prazo)
+  const from = box.alocadaEm ? new Date(box.alocadaEm) : new Date()
+  return prazoDeEnvio(box.cidade ?? "", from)
+}
+
+function matchesWeekdayFilter(nota: PendingNotaResumo, day: number | null) {
+  if (day === null) return true
+  const rota = rotaDaCidade(nota.cidade === "sem cidade" ? "" : nota.cidade)
+  if (rota?.dias.includes(day)) return true
+  if (!nota.prazo) return false
+  const date = new Date(`${nota.prazo}T12:00:00`)
+  if (Number.isNaN(date.getTime())) return false
+  return date.getDay() === day
+}
+
+function isoDayFromValue(value: string) {
+  const match = value.match(/^(\d{4}-\d{2}-\d{2})/)
+  if (match && value.length <= 10) return match[1]
+  const date = new Date(value)
+  if (Number.isNaN(date.getTime())) return match?.[1] ?? ""
+  const year = date.getFullYear()
+  const month = String(date.getMonth() + 1).padStart(2, "0")
+  const day = String(date.getDate()).padStart(2, "0")
+  return `${year}-${month}-${day}`
 }
 
 function prazoHint(cidade: string, cidadeDigitada: string) {

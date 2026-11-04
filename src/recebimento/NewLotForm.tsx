@@ -52,7 +52,7 @@ export function NewLotForm({
         onSubmit={handleSubmit}
         noValidate
       >
-        <h1 className="text-xl font-semibold tracking-tight sm:text-2xl">Novo lote</h1>
+        <h1 className="screen-title">Novo lote</h1>
         <p className="mt-1 text-sm text-neutral-600">
           {product.codigo} · {product.nome}
         </p>

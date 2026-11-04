@@ -784,6 +784,55 @@ export async function allocateBoxes(db, input) {
   })
 }
 
+export async function reallocateBoxes(db, input) {
+  const notaFiscal = text(input.notaFiscal)
+  const posicao = text(input.posicao)
+  const armazemCodigo = text(input.armazemCodigo)
+  if (!notaFiscal) throw new ApiError("Informe a nota fiscal.")
+  if (!posicao) throw new ApiError("Informe a nova posição.")
+  const normalized = normalizeNotaFiscal(notaFiscal)
+  return withTransaction(db, async (tx) => {
+    const warehouse = armazemCodigo ? await requireWarehouse(tx, armazemCodigo) : null
+    const rows = await tx.all(
+      `SELECT id, nota_fiscal, expedida
+       FROM boxes
+       WHERE nota_fiscal IS NOT NULL AND nota_fiscal != ''`,
+    )
+    const matches = rows.filter(
+      (box) =>
+        Number(box.expedida) !== 1 &&
+        notaFiscalMatches(box.nota_fiscal, notaFiscal, normalized),
+    )
+    if (matches.length === 0) {
+      throw new ApiError("Nenhuma caixa ativa encontrada para esta nota fiscal.")
+    }
+    const ids = matches.map((box) => box.id)
+    for (const id of ids) {
+      await tx.run(
+        `UPDATE boxes
+         SET posicao = ?, armazem_codigo = ?, coletada = 0
+         WHERE id = ?`,
+        posicao,
+        warehouse,
+        id,
+      )
+    }
+    await upsertNotaFiscal(tx, {
+      notaFiscal: matches[0].nota_fiscal || notaFiscal,
+      posicao,
+      quantidade: ids.length,
+      actor: eventActor(input),
+    })
+    const place = warehouse ? `${posicao} do armazém ${warehouse}` : posicao
+    await logEvent(
+      tx,
+      input,
+      `${eventActor(input)} realocou as caixas ${boxIdsText(ids)} da nota fiscal ${notaFiscal} para a posição ${place}.`,
+    )
+    return readState(tx)
+  })
+}
+
 async function upsertNotaFiscal(db, { notaFiscal, posicao, quantidade, actor }) {
   const now = new Date().toISOString()
   const normalized = normalizeNotaFiscal(notaFiscal)

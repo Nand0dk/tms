@@ -14,6 +14,7 @@ import {
   saveLot,
   savePositions,
   saveProduct,
+  saveReallocation,
   saveShelf,
   saveShelfPositions,
   saveShipment,
@@ -41,7 +42,7 @@ type Screen =
 
 function RecebimentoIcon() {
   return (
-    <svg viewBox="0 0 48 48" className="h-8 w-8" aria-hidden="true">
+    <svg viewBox="0 0 48 48" className="h-8 w-8 lg:h-9 lg:w-9" aria-hidden="true">
       <path
         d="M8 18.5 24 10l16 8.5v15.2c0 1.2-.7 2.3-1.8 2.8L24 44 9.8 36.5A3.1 3.1 0 0 1 8 33.7V18.5Z"
         fill="none"
@@ -147,6 +148,14 @@ export function PhoneHome() {
     ).then(apply)
   }
 
+  function reallocateBoxes(
+    notaFiscal: string,
+    posicao: string,
+    armazemCodigo?: string,
+  ) {
+    return saveReallocation(actor, notaFiscal, posicao, armazemCodigo).then(apply)
+  }
+
   function shipBoxes(
     boxIds: string[],
     notaFiscal: string,
@@ -179,21 +188,21 @@ export function PhoneHome() {
   return (
     <div className="app-chrome flex h-dvh max-h-dvh min-h-0 flex-col overflow-hidden bg-[#f4f6f3] text-neutral-900">
       <header className="shrink-0 border-b border-neutral-200 bg-white">
-        <div className="mx-auto flex w-full max-w-6xl items-center justify-between gap-2 px-3 pt-[max(0.75rem,env(safe-area-inset-top))] pb-3 sm:gap-3 sm:px-5 lg:px-8">
+        <div className="mx-auto flex w-full max-w-[1920px] items-center justify-between gap-2 px-3 pt-[max(0.75rem,env(safe-area-inset-top))] pb-3 sm:gap-3 sm:px-5 lg:px-8 xl:px-10 2xl:px-12">
           <div className="flex min-w-0 items-center gap-2">
-            <span className="truncate text-sm font-semibold sm:text-base">{company.name}</span>
+            <span className="truncate text-sm font-semibold sm:text-base lg:text-lg">{company.name}</span>
           </div>
           <button
             type="button"
             onClick={logout}
-            className="shrink-0 rounded-full border border-neutral-300 px-2.5 py-1.5 text-sm font-medium text-neutral-800 hover:bg-neutral-50 sm:px-3 sm:py-2"
+            className="shrink-0 rounded-full border border-neutral-300 px-2.5 py-1.5 text-sm font-medium text-neutral-800 hover:bg-neutral-50 sm:px-3 sm:py-2 lg:px-4 lg:py-2.5 lg:text-base"
           >
             Sair
           </button>
         </div>
       </header>
 
-      <div className="mx-auto flex w-full min-w-0 max-w-6xl min-h-0 flex-1 flex-col overflow-hidden px-3 pb-[max(1rem,env(safe-area-inset-bottom))] sm:px-5 lg:px-8">
+      <div className="mx-auto flex w-full min-w-0 max-w-[1920px] min-h-0 flex-1 flex-col overflow-hidden px-3 pb-[max(1rem,env(safe-area-inset-bottom))] sm:px-5 lg:px-8 xl:px-10 2xl:px-12">
         {!ready ? (
           <p className="px-1 pt-8 text-sm text-neutral-600">
             {loadError ?? "Carregando dados…"}
@@ -253,6 +262,7 @@ export function PhoneHome() {
           <ExpedicaoScreen
             products={products}
             onAllocate={allocateBoxes}
+            onReallocate={reallocateBoxes}
             onShip={shipBoxes}
             onBack={() => setScreen("home")}
           />
@@ -350,16 +360,16 @@ function HomeScreen({
   ].filter((card) => card !== null)
 
   return (
-    <div className="min-h-0 flex-1 overflow-y-auto py-4 sm:py-6">
-      <p className="text-sm text-neutral-500">{greeting}</p>
-      <h1 className="mt-1 text-xl font-semibold tracking-tight sm:text-2xl">Início</h1>
+    <div className="min-h-0 flex-1 overflow-y-auto py-4 sm:py-6 lg:py-8">
+      <p className="text-sm text-neutral-500 lg:text-base">{greeting}</p>
+      <h1 className="screen-title mt-1">Início</h1>
 
       {cards.length === 0 ? (
-        <p className="mt-6 rounded-2xl border border-dashed border-neutral-300 bg-white px-4 py-8 text-center text-sm text-neutral-500">
+        <p className="mt-6 rounded-2xl border border-dashed border-neutral-300 bg-white px-4 py-8 text-center text-sm text-neutral-500 lg:mt-8 lg:text-base">
           Nenhuma área liberada. Peça ao ADM01.
         </p>
       ) : (
-        <div className="mt-5 grid grid-cols-1 gap-3 sm:mt-6 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+        <div className="mt-5 grid grid-cols-1 gap-3 sm:mt-6 sm:grid-cols-2 sm:gap-4 lg:mt-8 lg:grid-cols-3 lg:gap-6 xl:grid-cols-4 xl:gap-7 2xl:gap-8">
           {cards.map((card) => (
             <AreaCard
               key={card.title}
@@ -384,7 +394,7 @@ function canOpen(areas: AreaAccess | null, screen: Screen, admin: boolean) {
 
 function HistoricoIcon() {
   return (
-    <svg viewBox="0 0 48 48" className="h-8 w-8" aria-hidden="true">
+    <svg viewBox="0 0 48 48" className="h-8 w-8 lg:h-9 lg:w-9" aria-hidden="true">
       <path
         d="M10 12h28M10 24h28M10 36h18"
         fill="none"
@@ -411,14 +421,14 @@ function AreaCard({
     <button
       type="button"
       onClick={onClick}
-      className="flex w-full min-w-0 items-center gap-3 rounded-2xl bg-white px-3 py-3.5 text-left shadow-sm ring-1 ring-black/5 hover:bg-neutral-50 sm:gap-4 sm:px-4 sm:py-4"
+      className="flex w-full min-w-0 items-center gap-3 rounded-2xl bg-white px-3 py-3.5 text-left shadow-sm ring-1 ring-black/5 hover:bg-neutral-50 sm:gap-4 sm:px-4 sm:py-4 lg:gap-5 lg:px-5 lg:py-5 xl:py-6"
     >
-      <span className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-gradient-to-br from-[#6abf3a] to-[#1f6b28] sm:h-14 sm:w-14">
+      <span className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-gradient-to-br from-[#6abf3a] to-[#1f6b28] sm:h-14 sm:w-14 lg:h-16 lg:w-16">
         {icon}
       </span>
       <span className="min-w-0">
-        <span className="block truncate text-base font-semibold">{title}</span>
-        <span className="mt-0.5 block text-sm leading-snug text-neutral-500">{description}</span>
+        <span className="block truncate text-base font-semibold lg:text-lg">{title}</span>
+        <span className="mt-0.5 block text-sm leading-snug text-neutral-500 lg:text-base">{description}</span>
       </span>
     </button>
   )
@@ -426,7 +436,7 @@ function AreaCard({
 
 function UsuariosIcon() {
   return (
-    <svg viewBox="0 0 48 48" className="h-8 w-8" aria-hidden="true">
+    <svg viewBox="0 0 48 48" className="h-8 w-8 lg:h-9 lg:w-9" aria-hidden="true">
       <path
         d="M24 24a7 7 0 1 0 0-14 7 7 0 0 0 0 14Z"
         fill="none"
@@ -446,7 +456,7 @@ function UsuariosIcon() {
 
 function EstoqueIcon() {
   return (
-    <svg viewBox="0 0 48 48" className="h-8 w-8" aria-hidden="true">
+    <svg viewBox="0 0 48 48" className="h-8 w-8 lg:h-9 lg:w-9" aria-hidden="true">
       <path
         d="M8 18h32M8 28h32M8 38h32M14 10v32M24 10v32M34 10v32"
         fill="none"
@@ -460,7 +470,7 @@ function EstoqueIcon() {
 
 function ExpedicaoIcon() {
   return (
-    <svg viewBox="0 0 48 48" className="h-8 w-8" aria-hidden="true">
+    <svg viewBox="0 0 48 48" className="h-8 w-8 lg:h-9 lg:w-9" aria-hidden="true">
       <path
         d="M8 30h18M30 22l8 8-8 8"
         fill="none"
@@ -482,7 +492,7 @@ function ExpedicaoIcon() {
 
 function ColetaIcon() {
   return (
-    <svg viewBox="0 0 48 48" className="h-8 w-8" aria-hidden="true">
+    <svg viewBox="0 0 48 48" className="h-8 w-8 lg:h-9 lg:w-9" aria-hidden="true">
       <path
         d="M10 16h20l8 8v16H10V16Z"
         fill="none"
@@ -504,7 +514,7 @@ function ColetaIcon() {
 
 function ArmazemIcon() {
   return (
-    <svg viewBox="0 0 48 48" className="h-8 w-8" aria-hidden="true">
+    <svg viewBox="0 0 48 48" className="h-8 w-8 lg:h-9 lg:w-9" aria-hidden="true">
       <path
         d="M6 20 24 8l18 12v20H6V20Z"
         fill="none"

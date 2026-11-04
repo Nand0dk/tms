@@ -7,6 +7,7 @@ import {
   allocateBoxes,
   ApiError,
   collectBoxes,
+  reallocateBoxes,
   deleteLot,
   deletePosition,
   deleteProduct,
@@ -104,6 +105,7 @@ async function handle(db, req, pathname) {
   if (pathname === "/api/collections") return collectBoxes(db, body)
   if (pathname === "/api/shipments") return shipBoxes(db, body)
   if (pathname === "/api/allocations") return allocateBoxes(db, body)
+  if (pathname === "/api/reallocations") return reallocateBoxes(db, body)
   if (pathname === "/api/nota-fiscal") return lookupNotaFiscal(db, body)
   if (pathname === "/api/nota-fiscal/register") return registerNotaFiscal(db, body)
   if (pathname === "/api/warehouses/delete") return deleteWarehouse(db, body)

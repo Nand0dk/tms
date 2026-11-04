@@ -4,6 +4,15 @@
 *::before,
 *::after {
   box-sizing: border-box;
+  /* Hide scrollbars; wheel / touch / trackpad scroll still work */
+  scrollbar-width: none; /* Firefox */
+  -ms-overflow-style: none; /* IE / legacy Edge */
+}
+
+*::-webkit-scrollbar {
+  display: none; /* Chrome, Safari, Edge */
+  width: 0;
+  height: 0;
 }
 
 html {
@@ -38,6 +47,40 @@ video,
 canvas {
   max-width: 100%;
   height: auto;
+}
+
+/* Shared screen heading — larger on desktop without per-file rewrites */
+.screen-title {
+  font-size: 1.25rem;
+  font-weight: 600;
+  letter-spacing: -0.025em;
+  line-height: 1.25;
+}
+
+@media (min-width: 640px) {
+  .screen-title {
+    font-size: 1.5rem;
+  }
+}
+
+@media (min-width: 1024px) {
+  .screen-title {
+    font-size: 1.875rem;
+  }
+}
+
+@media (min-width: 1536px) {
+  .screen-title {
+    font-size: 2.25rem;
+  }
+}
+
+/* Comfortable vertical rhythm on large displays */
+@media (min-width: 1024px) {
+  .app-chrome .screen-pad {
+    padding-top: 1.25rem;
+    padding-bottom: 0.75rem;
+  }
 }
 
 @media print {
