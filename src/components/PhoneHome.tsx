@@ -1,7 +1,5 @@
-import { useEffect, useMemo, useState, type ReactNode } from "react"
+import { lazy, Suspense, useEffect, useMemo, useState, type ReactNode } from "react"
 import { company } from "../config"
-import { ArmazemScreen } from "../armazem/ArmazemScreen"
-import { ColetaScreen } from "../coleta/ColetaScreen"
 import {
   loadData,
   loadHistory,
@@ -33,17 +31,51 @@ import {
 } from "../data/api"
 import { positionFromSearch } from "../recebimento/format"
 import { ShelfReader } from "../recebimento/ShelfReader"
-import { ExpedicaoScreen, NotaFiscalHistorico } from "../expedicao/ExpedicaoScreen"
 import { formatPrazo, prazoEfetivo } from "../expedicao/rotas"
-import { EstoqueScreen } from "../estoque/EstoqueScreen"
-import { RecebimentoScreen } from "../recebimento/RecebimentoScreen"
 import type { LotDraft, Product, Warehouse } from "../recebimento/types"
 import type { AreaAccess } from "../data/api"
 import { useSession } from "../session"
-import { HistoricoScreen } from "../historico/HistoricoScreen"
 import { BackButton } from "../recebimento/BackButton"
 import { Logo } from "./Logo"
-import { UsuariosScreen } from "../usuarios/UsuariosScreen"
+
+const ArmazemScreen = lazy(() =>
+  import("../armazem/ArmazemScreen").then((module) => ({ default: module.ArmazemScreen })),
+)
+const ColetaScreen = lazy(() =>
+  import("../coleta/ColetaScreen").then((module) => ({ default: module.ColetaScreen })),
+)
+const ExpedicaoScreen = lazy(() =>
+  import("../expedicao/ExpedicaoScreen").then((module) => ({
+    default: module.ExpedicaoScreen,
+  })),
+)
+const NotaFiscalHistorico = lazy(() =>
+  import("../expedicao/ExpedicaoScreen").then((module) => ({
+    default: module.NotaFiscalHistorico,
+  })),
+)
+const EstoqueScreen = lazy(() =>
+  import("../estoque/EstoqueScreen").then((module) => ({ default: module.EstoqueScreen })),
+)
+const RecebimentoScreen = lazy(() =>
+  import("../recebimento/RecebimentoScreen").then((module) => ({
+    default: module.RecebimentoScreen,
+  })),
+)
+const HistoricoScreen = lazy(() =>
+  import("../historico/HistoricoScreen").then((module) => ({
+    default: module.HistoricoScreen,
+  })),
+)
+const UsuariosScreen = lazy(() =>
+  import("../usuarios/UsuariosScreen").then((module) => ({
+    default: module.UsuariosScreen,
+  })),
+)
+
+function ScreenFallback() {
+  return <p className="px-1 pt-8 text-sm text-neutral-600">Carregando…</p>
+}
 
 type Screen =
   | "home"
@@ -333,64 +365,64 @@ export function PhoneHome() {
             onOpenUsuarios={() => openArea("usuarios")}
             onOpenHistorico={() => openArea("historico")}
           />
-        ) : screen === "rota" ? (
-          <MinhaRotaScreen
-            actor={actor}
-            onBack={goHome}
-            onShipped={apply}
-          />
-        ) : screen === "recebimento" ? (
-          <RecebimentoScreen
-            products={products}
-            onAddProduct={addProduct}
-            onAddLot={addLot}
-            onDeleteProduct={deleteProduct}
-            onDeleteLot={deleteLot}
-            canDelete={admin}
-            onBack={goHome}
-          />
-        ) : screen === "estoque" ? (
-          <EstoqueScreen
-            products={products}
-            warehouses={warehouses}
-            onSetPosition={setPosition}
-            onBack={goHome}
-          />
-        ) : screen === "armazem" ? (
-          <ArmazemScreen
-            products={products}
-            warehouses={warehouses}
-            onAdd={(warehouse) => saveWarehouse(actor, warehouse).then(apply)}
-            onAddShelf={addShelf}
-            onAddPositions={addShelfPositions}
-            onSetPosition={setPosition}
-            onDeleteWarehouse={deleteWarehouse}
-            onDeleteShelf={deleteShelf}
-            onDeletePosition={deletePosition}
-            canDelete={admin}
-            onBack={goHome}
-          />
-        ) : screen === "coleta" ? (
-          <ColetaScreen
-            products={products}
-            warehouses={warehouses}
-            onCollect={collectBoxes}
-            onBack={goHome}
-          />
-        ) : screen === "expedicao" ? (
-          <ExpedicaoScreen
-            products={products}
-            actor={actor}
-            onAllocate={allocateBoxes}
-            onReallocate={reallocateBoxes}
-            onShip={shipBoxes}
-            onReturn={returnBoxes}
-            onBack={goHome}
-          />
-        ) : screen === "historico" ? (
-          <HistoricoScreen actor={actor} onBack={goHome} />
         ) : (
-          <UsuariosScreen actor={actor} onBack={goHome} />
+          <Suspense fallback={<ScreenFallback />}>
+            {screen === "rota" ? (
+              <MinhaRotaScreen actor={actor} onBack={goHome} onShipped={apply} />
+            ) : screen === "recebimento" ? (
+              <RecebimentoScreen
+                products={products}
+                onAddProduct={addProduct}
+                onAddLot={addLot}
+                onDeleteProduct={deleteProduct}
+                onDeleteLot={deleteLot}
+                canDelete={admin}
+                onBack={goHome}
+              />
+            ) : screen === "estoque" ? (
+              <EstoqueScreen
+                products={products}
+                warehouses={warehouses}
+                onSetPosition={setPosition}
+                onBack={goHome}
+              />
+            ) : screen === "armazem" ? (
+              <ArmazemScreen
+                products={products}
+                warehouses={warehouses}
+                onAdd={(warehouse) => saveWarehouse(actor, warehouse).then(apply)}
+                onAddShelf={addShelf}
+                onAddPositions={addShelfPositions}
+                onSetPosition={setPosition}
+                onDeleteWarehouse={deleteWarehouse}
+                onDeleteShelf={deleteShelf}
+                onDeletePosition={deletePosition}
+                canDelete={admin}
+                onBack={goHome}
+              />
+            ) : screen === "coleta" ? (
+              <ColetaScreen
+                products={products}
+                warehouses={warehouses}
+                onCollect={collectBoxes}
+                onBack={goHome}
+              />
+            ) : screen === "expedicao" ? (
+              <ExpedicaoScreen
+                products={products}
+                actor={actor}
+                onAllocate={allocateBoxes}
+                onReallocate={reallocateBoxes}
+                onShip={shipBoxes}
+                onReturn={returnBoxes}
+                onBack={goHome}
+              />
+            ) : screen === "historico" ? (
+              <HistoricoScreen actor={actor} onBack={goHome} />
+            ) : (
+              <UsuariosScreen actor={actor} onBack={goHome} />
+            )}
+          </Suspense>
         )}
       </div>
 
@@ -1110,7 +1142,9 @@ function NotificacoesScreen({
 
   if (detail) {
     return (
-      <NotaFiscalHistorico data={detail} onBack={() => setDetail(null)} />
+      <Suspense fallback={<ScreenFallback />}>
+        <NotaFiscalHistorico data={detail} onBack={() => setDetail(null)} />
+      </Suspense>
     )
   }
 

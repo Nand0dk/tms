@@ -146,6 +146,9 @@ function bind(executor) {
   }
 }
 
+/** Bump when schema/migrations change so cold starts re-run bootstrap. */
+const SCHEMA_BOOT_KEY = "schema_boot_v3"
+
 export async function openDatabase() {
   const url = envText("TURSO_DATABASE_URL")
   const authToken = envText("TURSO_AUTH_TOKEN")
@@ -159,8 +162,20 @@ export async function openDatabase() {
     : createClient({ url: localFileUrl(), intMode: "number", timeout: 5000 })
 
   await client.execute("PRAGMA foreign_keys = ON")
-  await client.executeMultiple(schema)
   const db = bind(client)
+
+  // Fast path on warm/cold reuse: skip CREATE/ALTER/seed when already bootstrapped.
+  try {
+    const boot = await db.get("SELECT value FROM meta WHERE key = ?", SCHEMA_BOOT_KEY)
+    if (boot?.value === "1") {
+      await refreshCidadeDias(db)
+      return db
+    }
+  } catch {
+    // meta/table may not exist yet — full bootstrap below.
+  }
+
+  await client.executeMultiple(schema)
   await ensureUserColumns(db)
   await ensureBoxColumns(db)
   await ensureNotaFiscalColumns(db)
@@ -173,6 +188,11 @@ export async function openDatabase() {
     await migrateRotasLimitadas(tx)
     await clearDefaultSeedIfNeeded(tx)
     await seedRotaMotoristas(tx)
+    await tx.run(
+      `INSERT INTO meta (key, value) VALUES (?, '1')
+       ON CONFLICT(key) DO UPDATE SET value = '1'`,
+      SCHEMA_BOOT_KEY,
+    )
   })
   await enforceMaxCidadesPorRota(db)
   await refreshCidadeDias(db)
@@ -180,24 +200,21 @@ export async function openDatabase() {
 }
 
 export async function readState(db) {
-  const productRows = await db.all(
-    "SELECT codigo, nome, unidade FROM products ORDER BY rowid",
-  )
-  const lotRows = await db.all(
-    "SELECT id, product_codigo, numero, quantidade, validade FROM lots ORDER BY ordem, id",
-  )
-  const boxRows = await db.all(
-    `SELECT id, lot_id, idx, total, posicao, armazem_codigo, coletada, expedida,
-            nota_fiscal, alocada_em, enviada_em, prazo, cidade
-     FROM boxes ORDER BY idx`,
-  )
-  const warehouseRows = await db.all("SELECT codigo, nome FROM warehouses ORDER BY rowid")
-  const shelfRows = await db.all(
-    "SELECT id, warehouse_codigo, codigo FROM shelves ORDER BY id",
-  )
-  const positionRows = await db.all(
-    "SELECT shelf_id, numero, codigo FROM positions ORDER BY numero",
-  )
+  const [productRows, lotRows, boxRows, warehouseRows, shelfRows, positionRows] =
+    await Promise.all([
+      db.all("SELECT codigo, nome, unidade FROM products ORDER BY rowid"),
+      db.all(
+        "SELECT id, product_codigo, numero, quantidade, validade FROM lots ORDER BY ordem, id",
+      ),
+      db.all(
+        `SELECT id, lot_id, idx, total, posicao, armazem_codigo, coletada, expedida,
+                nota_fiscal, alocada_em, enviada_em, prazo, cidade
+         FROM boxes ORDER BY idx`,
+      ),
+      db.all("SELECT codigo, nome FROM warehouses ORDER BY rowid"),
+      db.all("SELECT id, warehouse_codigo, codigo FROM shelves ORDER BY id"),
+      db.all("SELECT shelf_id, numero, codigo FROM positions ORDER BY numero"),
+    ])
 
   const boxesByLot = new Map()
   for (const box of boxRows) {

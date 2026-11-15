@@ -1,5 +1,4 @@
 import { useEffect, useRef, useState } from "react"
-import { BrowserMultiFormatReader } from "@zxing/browser"
 
 type TorchCapabilities = MediaTrackCapabilities & { torch?: boolean }
 type TorchConstraintSet = MediaTrackConstraintSet & { torch?: boolean }
@@ -50,7 +49,6 @@ export function ShelfReader({
     let videoTrack: MediaStreamTrack | null = null
     let lastText = ""
     let lastAt = 0
-    const reader = new BrowserMultiFormatReader()
 
     const stopCamera = () => {
       const track = videoTrack
@@ -65,37 +63,43 @@ export function ShelfReader({
       })
     }
 
-    reader
-      .decodeFromConstraints(
-        { video: { facingMode: { ideal: "environment" } } },
-        video,
-        (result) => {
-          if (stopped || !result) return
-          const text = result.getText().trim()
-          if (!text) return
-          const now = Date.now()
-          if (text === lastText && now - lastAt < 1500) return
-          lastText = text
-          lastAt = now
-          onReadRef.current(text)
-          if (continuousRef.current) return
-          stopped = true
-          stopCamera()
-          setOpen(false)
-        },
-      )
+    void import("@zxing/browser")
+      .then(({ BrowserMultiFormatReader }) => {
+        if (stopped) return null
+        const reader = new BrowserMultiFormatReader()
+        return reader.decodeFromConstraints(
+          { video: { facingMode: { ideal: "environment" } } },
+          video,
+          (result) => {
+            if (stopped || !result) return
+            const text = result.getText().trim()
+            if (!text) return
+            const now = Date.now()
+            if (text === lastText && now - lastAt < 1500) return
+            lastText = text
+            lastAt = now
+            onReadRef.current(text)
+            if (continuousRef.current) return
+            stopped = true
+            stopCamera()
+            setOpen(false)
+          },
+        )
+      })
       .then((next) => {
-        controls = next
-        if (stopped) {
-          stopCamera()
+        if (!next || stopped) {
+          if (next) next.stop()
           return
         }
+        controls = next
         videoTrack = getVideoTrack(video)
         void setTorch(videoTrack, true)
       })
       .catch(() => {
         if (!stopped) {
-          setError("Não foi possível abrir a câmera. Permita o uso da câmera ou digite o código.")
+          setError(
+            "Não foi possível abrir a câmera. Permita o uso da câmera ou digite o código.",
+          )
           setOpen(false)
         }
       })

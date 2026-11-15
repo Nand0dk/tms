@@ -18,4 +18,22 @@ export default defineConfig({
       },
     },
   ],
+  build: {
+    target: "es2022",
+    cssCodeSplit: true,
+    sourcemap: false,
+    reportCompressedSize: false,
+    chunkSizeWarningLimit: 700,
+    rollupOptions: {
+      output: {
+        manualChunks(id) {
+          if (id.includes("node_modules")) {
+            if (id.includes("@zxing")) return "zxing"
+            if (id.includes("qrcode")) return "qrcode"
+            if (id.includes("react-dom") || id.includes("/react/")) return "react"
+          }
+        },
+      },
+    },
+  },
 })
