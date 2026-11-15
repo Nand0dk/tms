@@ -1,92 +1,40 @@
 export const MAX_CIDADES_POR_ROTA = 5
 export const TOTAL_ROTAS = 5
 
-const CIDADES_ROTA_1_3 = sorted([
-  "Barueri",
-  "Campinas",
-  "Guarulhos",
-  "Indaiatuba",
-  "Itapevi",
-])
-
-const CIDADES_ROTA_2_4 = sorted([
-  "Araraquara",
-  "Cabreúva",
-  "Capivari",
-  "Elias Fausto",
-  "Itupeva",
-])
-
-const CIDADES_ROTA_5 = sorted([
-  "Araçoiaba da Serra",
-  "Bofete",
-  "Boituva",
-  "Botucatu",
-  "Capela do Alto",
-])
-
-/** Cidades na lista sem dia de rota fixo — prazo padrão de +7 dias. */
+/** Cidades na lista sem rota — ainda usam prazo padrão de +7 dias. */
 const CIDADES_PRAZO_PADRAO = sorted(["Sorocaba"])
 
+/** Metadados das 5 rotas. `dia` = número da rota (1–5), não dia da semana. */
 export const DIAS_ROTA = [
-  { id: "rota1", titulo: "Rota 1", diaSemana: "Segunda-feira", dia: 1 },
-  { id: "rota2", titulo: "Rota 2", diaSemana: "Terça-feira", dia: 2 },
-  { id: "rota3", titulo: "Rota 3", diaSemana: "Quarta-feira", dia: 3 },
-  { id: "rota4", titulo: "Rota 4", diaSemana: "Quinta-feira", dia: 4 },
-  { id: "rota5", titulo: "Rota 5", diaSemana: "Sexta-feira", dia: 5 },
+  { id: "rota1", titulo: "Rota 1", dia: 1 },
+  { id: "rota2", titulo: "Rota 2", dia: 2 },
+  { id: "rota3", titulo: "Rota 3", dia: 3 },
+  { id: "rota4", titulo: "Rota 4", dia: 4 },
+  { id: "rota5", titulo: "Rota 5", dia: 5 },
 ] as const
 
 export type RotaDia = {
   id: string
   titulo: string
-  diaSemana: string
+  /** IDs de rota (1–5), não weekdays. */
   dias: number[]
   cidades: string[]
 }
 
 export type CidadeRota = {
   cidade: string
+  /** IDs de rota (1–5) em que a cidade está. */
   dias: number[]
   titulo: string
 }
 
-export const DEFAULT_ROTAS: RotaDia[] = [
-  {
-    id: "rota1",
-    titulo: "Rota 1",
-    diaSemana: "Segunda-feira",
-    dias: [1],
-    cidades: CIDADES_ROTA_1_3,
-  },
-  {
-    id: "rota2",
-    titulo: "Rota 2",
-    diaSemana: "Terça-feira",
-    dias: [2],
-    cidades: CIDADES_ROTA_2_4,
-  },
-  {
-    id: "rota3",
-    titulo: "Rota 3",
-    diaSemana: "Quarta-feira",
-    dias: [3],
-    cidades: CIDADES_ROTA_1_3,
-  },
-  {
-    id: "rota4",
-    titulo: "Rota 4",
-    diaSemana: "Quinta-feira",
-    dias: [4],
-    cidades: CIDADES_ROTA_2_4,
-  },
-  {
-    id: "rota5",
-    titulo: "Rota 5",
-    diaSemana: "Sexta-feira",
-    dias: [5],
-    cidades: CIDADES_ROTA_5,
-  },
-]
+/** Rotas começam vazias — cidades são adicionadas pela UI. */
+export const DEFAULT_ROTAS: RotaDia[] = DIAS_ROTA.map((meta) => ({
+  id: meta.id,
+  titulo: meta.titulo,
+  dias: [meta.dia],
+  cidades: [] as string[],
+}))
 
 let activeRotas: RotaDia[] = DEFAULT_ROTAS
 export const CIDADES: CidadeRota[] = mergeCidades(DEFAULT_ROTAS, CIDADES_PRAZO_PADRAO)
@@ -122,7 +70,6 @@ export function applyRoutes(entries: { cidade: string; dias: number[] }[]) {
   activeRotas = DIAS_ROTA.map((meta) => ({
     id: meta.id,
     titulo: meta.titulo,
-    diaSemana: meta.diaSemana,
     dias: [meta.dia],
     cidades: sorted(byDay.get(meta.dia) ?? []).slice(0, MAX_CIDADES_POR_ROTA),
   }))
@@ -143,30 +90,24 @@ export function rotaDaCidade(cidade: string) {
 }
 
 /**
- * Próximo dia de rota DEPOIS da data de entrada (não conta o próprio dia).
- * Se a NF entra no dia de saída, o prazo vai para a próxima data dessa rota.
+ * Rotas 1–5 não mapeiam para dias da semana — não há “próximo dia de rota”.
+ * Mantido por compatibilidade; sempre retorna "".
  */
-export function proximoPrazo(cidade: string, from = new Date()) {
-  const rota = rotaDaCidade(cidade)
-  if (!rota) return ""
-  const start = atNoon(from)
-  for (let offset = 1; offset <= 8; offset += 1) {
-    const day = new Date(start)
-    day.setDate(start.getDate() + offset)
-    if (rota.dias.includes(day.getDay())) return toIsoDay(day)
-  }
+export function proximoPrazo(_cidade: string, _from = new Date()) {
   return ""
 }
 
-export function prazoDeEnvio(cidade: string, from = new Date()) {
-  const rota = proximoPrazo(cidade, from)
-  if (rota) return rota
+/**
+ * Prazo de envio: sempre +7 dias a partir da entrada.
+ * (Sem weekday por rota; mesmo padrão de Sorocaba / cidades sem agenda.)
+ */
+export function prazoDeEnvio(_cidade: string, from = new Date()) {
   const day = atNoon(from)
   day.setDate(day.getDate() + 7)
   return toIsoDay(day)
 }
 
-/** Prazo efetivo para exibição/atraso — corrige NFs antigas gravadas no mesmo dia da rota. */
+/** Prazo efetivo para exibição/atraso — corrige NFs antigas com prazo = dia da alocação. */
 export function prazoEfetivo(
   cidade: string,
   prazoGravado?: string | null,

@@ -254,7 +254,6 @@ export type RouteCity = {
 export type RouteInfo = {
   id: string
   titulo: string
-  diaSemana: string
   dias: number[]
   cidades: string[]
   motorista: string

@@ -170,6 +170,7 @@ export async function openDatabase() {
     await ensureAdmin(tx)
     await seedRotaCidades(tx)
     await migrateRotasLimitadas(tx)
+    await clearDefaultSeedIfNeeded(tx)
     await seedRotaMotoristas(tx)
   })
   await enforceMaxCidadesPorRota(db)
@@ -1157,55 +1158,37 @@ function dateOnly(value) {
 
 const MAX_CIDADES_POR_ROTA = 5
 
-const DEFAULT_ROTA_SEED = [
-  ["Barueri", [1, 3]],
-  ["Campinas", [1, 3]],
-  ["Guarulhos", [1, 3]],
-  ["Indaiatuba", [1, 3]],
-  ["Itapevi", [1, 3]],
-  ["Araraquara", [2, 4]],
-  ["Cabreúva", [2, 4]],
-  ["Capivari", [2, 4]],
-  ["Elias Fausto", [2, 4]],
-  ["Itupeva", [2, 4]],
-  ["Araçoiaba da Serra", [5]],
-  ["Bofete", [5]],
-  ["Boituva", [5]],
-  ["Botucatu", [5]],
-  ["Capela do Alto", [5]],
-]
+/**
+ * Rotas 1–5 = grupos de cidades (não dias da semana).
+ * `dias` na tabela = IDs de rota (1–5). Cidades começam vazias; o usuário adiciona.
+ */
+/** Runtime map cidade(lower) -> rotas (1–5) — synced from rota_cidades */
+let cidadeDias = {}
 
-/** Runtime map cidade(lower) -> dias — synced from rota_cidades */
-let cidadeDias = Object.fromEntries(
-  DEFAULT_ROTA_SEED.map(([cidade, dias]) => [cidade.toLowerCase(), dias]),
-)
-
-async function seedRotaCidades(tx) {
-  const existing = await tx.get("SELECT COUNT(*) AS total FROM rota_cidades")
-  if (Number(existing?.total) > 0) return
-  for (const [cidade, dias] of DEFAULT_ROTA_SEED) {
-    await tx.run(
-      "INSERT INTO rota_cidades (cidade, dias) VALUES (?, ?)",
-      cidade,
-      JSON.stringify(dias),
-    )
-  }
+/** No-op: não pré-carrega cidades. Rotas começam limpas. */
+async function seedRotaCidades(_tx) {
+  return
 }
 
-/** Migra para o modelo de 5 rotas × até 5 cidades (reaplica o seed limitado). */
+/** Legacy flag — não reinsere cidades seed. */
 async function migrateRotasLimitadas(tx) {
   const flag = await tx.get("SELECT value FROM meta WHERE key = 'rota_limit_v3'")
   if (flag?.value === "1") return
-  await tx.run("DELETE FROM rota_cidades")
-  for (const [cidade, dias] of DEFAULT_ROTA_SEED) {
-    await tx.run(
-      "INSERT INTO rota_cidades (cidade, dias) VALUES (?, ?)",
-      cidade,
-      JSON.stringify(dias),
-    )
-  }
   await tx.run(
     "INSERT INTO meta (key, value) VALUES ('rota_limit_v3', '1') ON CONFLICT(key) DO UPDATE SET value = '1'",
+  )
+}
+
+/**
+ * One-time: apaga cidades seed antigas e deixa rotas vazias.
+ * Não mexe em rota_motoristas (motoristas preservados).
+ */
+async function clearDefaultSeedIfNeeded(tx) {
+  const flag = await tx.get("SELECT value FROM meta WHERE key = 'routes_cleared_v2'")
+  if (flag?.value === "1") return
+  await tx.run("DELETE FROM rota_cidades")
+  await tx.run(
+    "INSERT INTO meta (key, value) VALUES ('routes_cleared_v2', '1') ON CONFLICT(key) DO UPDATE SET value = '1'",
   )
 }
 
@@ -1220,7 +1203,7 @@ async function seedRotaMotoristas(tx) {
   }
 }
 
-/** Mantém no máximo 5 cidades por rota (dia 1–5). */
+/** Mantém no máximo 5 cidades por rota (rota 1–5). */
 async function enforceMaxCidadesPorRota(db) {
   const rows = await db.all("SELECT cidade, dias FROM rota_cidades")
   const byDay = { 1: [], 2: [], 3: [], 4: [], 5: [] }
@@ -1318,11 +1301,11 @@ function normalizeDias(input) {
 }
 
 const ROTA_META = {
-  1: { titulo: "Rota 1", diaSemana: "Segunda-feira" },
-  2: { titulo: "Rota 2", diaSemana: "Terça-feira" },
-  3: { titulo: "Rota 3", diaSemana: "Quarta-feira" },
-  4: { titulo: "Rota 4", diaSemana: "Quinta-feira" },
-  5: { titulo: "Rota 5", diaSemana: "Sexta-feira" },
+  1: { titulo: "Rota 1" },
+  2: { titulo: "Rota 2" },
+  3: { titulo: "Rota 3" },
+  4: { titulo: "Rota 4" },
+  5: { titulo: "Rota 5" },
 }
 
 async function loadRotaMotoristas(db) {
@@ -1367,7 +1350,6 @@ export async function listRoutes(db) {
     return {
       id: `rota${dia}`,
       titulo: ROTA_META[dia].titulo,
-      diaSemana: ROTA_META[dia].diaSemana,
       dias: [dia],
       cidades: cidades
         .filter((item) => item.dias.includes(dia))
@@ -1691,24 +1673,12 @@ function isoDay(date) {
   return `${year}-${month}-${day}`
 }
 
-function prazoDaCidade(cidade, from = new Date()) {
-  const dias = cidadeDias[String(cidade || "").trim().toLowerCase()]
-  if (!dias) return ""
-  const start = new Date(from)
-  if (Number.isNaN(start.getTime())) return ""
-  start.setHours(12, 0, 0, 0)
-  // Próximo dia de rota depois da entrada (se entrar no dia de saída, vai para a próxima data).
-  for (let offset = 1; offset <= 8; offset += 1) {
-    const day = new Date(start)
-    day.setDate(start.getDate() + offset)
-    if (dias.includes(day.getDay())) return isoDay(day)
-  }
-  return ""
-}
-
-function prazoDeEnvio(cidade, from = new Date()) {
-  const rota = prazoDaCidade(cidade, from)
-  if (rota) return rota
+/**
+ * Prazo de envio: rotas 1–5 NÃO mapeiam para dias da semana.
+ * Sempre +7 dias a partir da data de entrada (mesmo padrão de Sorocaba / sem weekday).
+ * `cidade` é aceito só por compatibilidade da assinatura (Alocar/Retorno).
+ */
+function prazoDeEnvio(_cidade, from = new Date()) {
   const day = new Date(from)
   if (Number.isNaN(day.getTime())) return isoDay(new Date())
   day.setHours(12, 0, 0, 0)

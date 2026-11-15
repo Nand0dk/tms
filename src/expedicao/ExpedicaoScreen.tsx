@@ -388,12 +388,12 @@ function BuscarNotaFiscal({
       <div className="min-h-0 flex-1 overflow-y-auto px-1 pb-[max(2rem,env(safe-area-inset-bottom))]">
         <h1 className="screen-title">Buscar nota fiscal</h1>
         <p className="mt-1 text-sm text-neutral-600">
-          Filtre pelo dia da rota ou digite o número. Toque numa NF pendente para
+          Filtre pelo dia do prazo ou digite o número. Toque numa NF pendente para
           enviar.
         </p>
 
         <div className="mt-4">
-          <p className="text-sm font-medium text-neutral-800">Dia da rota</p>
+          <p className="text-sm font-medium text-neutral-800">Dia do prazo</p>
           <div className="mt-2 flex gap-2 overflow-x-auto pb-1">
             {DIAS_SEMANA.map((dia) => {
               const selected = diaFiltro === dia.value
@@ -1418,10 +1418,9 @@ function deadlineForBox(box: Box) {
   return prazoEfetivo(box.cidade ?? "", box.prazo, box.alocadaEm)
 }
 
+/** Filtro por weekday do prazo gravado (calendário), não por número de rota. */
 function matchesWeekdayFilter(nota: PendingNotaResumo, day: number | null) {
   if (day === null) return true
-  const rota = rotaDaCidade(nota.cidade === "sem cidade" ? "" : nota.cidade)
-  if (rota?.dias.includes(day)) return true
   if (!nota.prazo) return false
   const date = new Date(`${nota.prazo}T12:00:00`)
   if (Number.isNaN(date.getTime())) return false
@@ -1432,10 +1431,11 @@ function prazoHint(cidade: string, cidadeDigitada: string) {
   const destino = cidadeDigitada.trim() || cidade.trim()
   const prazo = prazoDeEnvio(destino)
   const rota = rotaDaCidade(destino)
+  // Rotas 1–5 não definem weekday; prazo = +7 dias a partir da entrada.
   if (rota) {
-    return `Prazo: ${formatPrazo(prazo)} — próxima saída após a entrada (${rota.titulo})`
+    return `Prazo: ${formatPrazo(prazo)} (+7 dias · ${rota.titulo})`
   }
-  return `Prazo: ${formatPrazo(prazo)} (até 7 dias)`
+  return `Prazo: ${formatPrazo(prazo)} (+7 dias)`
 }
 
 function shippedBoxes(products: Product[]) {

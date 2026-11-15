@@ -2,7 +2,6 @@ import { BackButton } from "../recebimento/BackButton"
 import { getRotas } from "./rotas"
 
 export function RotasScreen({ onBack }: { onBack: () => void }) {
-  const hoje = new Date().getDay()
   const rotas = getRotas()
 
   return (
@@ -16,40 +15,30 @@ export function RotasScreen({ onBack }: { onBack: () => void }) {
           Até 5 cidades em cada uma das 5 rotas de saída.
         </p>
         <div className="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-2 sm:gap-4 lg:grid-cols-3 lg:gap-4 xl:grid-cols-5">
-          {rotas.map((rota) => {
-            const hojeNestaRota = rota.dias.includes(hoje)
-            return (
-              <section
-                key={rota.id}
-                className={`min-w-0 rounded-xl bg-white px-3 py-3 shadow-sm ring-1 ${
-                  hojeNestaRota ? "ring-[#1f6b28]" : "ring-black/5"
-                }`}
-              >
-                <div className="flex items-center justify-between gap-2">
-                  <div>
-                    <h2 className="text-base font-semibold">{rota.titulo}</h2>
-                    <p className="text-xs text-neutral-500">{rota.diaSemana}</p>
-                  </div>
-                  {hojeNestaRota ? (
-                    <span className="rounded-full bg-[#1f6b28] px-2 py-0.5 text-[11px] font-medium text-white">
-                      Hoje
-                    </span>
-                  ) : null}
-                </div>
-                <ul className="mt-2 flex flex-col gap-1">
-                  {rota.cidades.length === 0 ? (
-                    <li className="text-sm text-neutral-500">Sem cidades</li>
-                  ) : (
-                    rota.cidades.map((cidade) => (
-                      <li key={cidade} className="text-sm text-neutral-700">
-                        {cidade}
-                      </li>
-                    ))
-                  )}
-                </ul>
-              </section>
-            )
-          })}
+          {rotas.map((rota) => (
+            <section
+              key={rota.id}
+              className="min-w-0 rounded-xl bg-white px-3 py-3 shadow-sm ring-1 ring-black/5"
+            >
+              <div className="flex items-center justify-between gap-2">
+                <h2 className="text-base font-semibold">{rota.titulo}</h2>
+                <span className="text-xs text-neutral-500">
+                  {rota.cidades.length}/5
+                </span>
+              </div>
+              <ul className="mt-2 flex flex-col gap-1">
+                {rota.cidades.length === 0 ? (
+                  <li className="text-sm text-neutral-500">Sem cidades</li>
+                ) : (
+                  rota.cidades.map((cidade) => (
+                    <li key={cidade} className="text-sm text-neutral-700">
+                      {cidade}
+                    </li>
+                  ))
+                )}
+              </ul>
+            </section>
+          ))}
         </div>
       </div>
     </div>

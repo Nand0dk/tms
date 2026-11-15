@@ -691,7 +691,7 @@ function MinhaRotaScreen({
             Leia o QR code da posição para listar as notas fiscais.
           </p>
           <p className="mt-2 text-sm font-medium text-neutral-800">
-            {selected.titulo} · {selected.diaSemana}
+            {selected.titulo}
           </p>
           <div className="mt-4">
             <ShelfReader
@@ -801,7 +801,11 @@ function MinhaRotaScreen({
         </header>
         <div className="min-h-0 flex-1 overflow-y-auto px-1 pb-[max(2rem,env(safe-area-inset-bottom))]">
           <h1 className="screen-title">{selected.titulo}</h1>
-          <p className="mt-1 text-sm text-neutral-600">{selected.diaSemana}</p>
+          <p className="mt-1 text-sm text-neutral-600">
+            {selected.cidades.length > 0
+              ? `${selected.cidades.length} ${selected.cidades.length === 1 ? "cidade" : "cidades"}`
+              : "Sem cidades"}
+          </p>
           <div className="mt-4 rounded-2xl bg-white px-4 py-3.5 shadow-sm ring-1 ring-black/5">
             <div className="flex items-center justify-between gap-2">
               <p className="text-sm font-medium text-neutral-500">Status</p>
@@ -869,9 +873,6 @@ function MinhaRotaScreen({
                     <span className="rounded-full bg-[#1f6b28] px-2 py-0.5 text-[11px] font-medium text-white">
                       Confirmada
                     </span>
-                  </span>
-                  <span className="mt-0.5 text-xs text-neutral-500">
-                    {rota.diaSemana}
                   </span>
                   <span className="mt-2 text-sm text-neutral-700">
                     {rota.cidades.length > 0
@@ -1261,7 +1262,6 @@ function MaisScreen({
                   <p className="text-sm font-semibold text-neutral-900">{rota.titulo}</p>
                   <span className="text-[11px] font-medium text-[#1f6b28]">Confirmada</span>
                 </div>
-                <p className="mt-0.5 text-xs text-neutral-500">{rota.diaSemana}</p>
                 <p className="mt-1.5 text-sm text-neutral-700">
                   {rota.cidades.length > 0
                     ? rota.cidades.join(" · ")

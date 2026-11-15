@@ -27,6 +27,8 @@ export function DefinirRotaScreen({
   const [rotaNumero, setRotaNumero] = useState(1)
   const [novaCidade, setNovaCidade] = useState("")
   const [motorista, setMotorista] = useState("")
+  const [pickerOpen, setPickerOpen] = useState(false)
+  const [pickerDraft, setPickerDraft] = useState("")
   const [error, setError] = useState<string | null>(null)
   const [saving, setSaving] = useState(false)
   const [loading, setLoading] = useState(true)
@@ -115,6 +117,30 @@ export function DefinirRotaScreen({
   const lotada = listaDaRota.length >= MAX_CIDADES_POR_ROTA
   const vagas = Math.max(0, MAX_CIDADES_POR_ROTA - listaDaRota.length)
   const driverBusy = saving || loading
+
+  const motoristaLabel = useMemo(() => {
+    if (!motorista) return ""
+    const found = drivers.find(
+      (driver) => driver.usuario.toLowerCase() === motorista.toLowerCase(),
+    )
+    if (found) return `${found.nome} (${found.usuario})`
+    if (rotaAtual?.motoristaNome) {
+      return `${rotaAtual.motoristaNome} (${motorista})`
+    }
+    return motorista
+  }, [drivers, motorista, rotaAtual?.motoristaNome])
+
+  function openDriverPicker() {
+    setPickerDraft(motorista)
+    setPickerOpen(true)
+    setError(null)
+  }
+
+  function confirmDriverPicker() {
+    setMotorista(pickerDraft)
+    setPickerOpen(false)
+    setError(null)
+  }
 
   async function handleAdd(event: FormEvent) {
     event.preventDefault()
@@ -251,10 +277,7 @@ export function DefinirRotaScreen({
 
         <section className="mt-5 rounded-xl bg-white px-3 py-3 shadow-sm ring-1 ring-black/5">
           <div className="flex items-start justify-between gap-2">
-            <div>
-              <h2 className="text-base font-semibold">{meta.titulo}</h2>
-              <p className="text-xs text-neutral-500">{meta.diaSemana}</p>
-            </div>
+            <h2 className="text-base font-semibold">{meta.titulo}</h2>
             <span className="shrink-0 text-xs text-neutral-500">
               {listaDaRota.length}/{MAX_CIDADES_POR_ROTA} cidades
             </span>
@@ -310,29 +333,21 @@ export function DefinirRotaScreen({
             Um motorista por rota. Independe do limite de cidades. Ao confirmar, a rota
             aparece no perfil dele.
           </p>
-          <label
-            className="mt-3 block text-sm font-medium text-neutral-800"
-            htmlFor="rota-motorista"
-          >
-            Selecionar motorista
-          </label>
-          <select
-            id="rota-motorista"
-            value={motorista}
+
+          <p className="mt-3 text-sm font-medium text-neutral-800">Selecionar motorista</p>
+          <button
+            type="button"
             disabled={driverBusy}
-            onChange={(event) => {
-              setMotorista(event.target.value)
-              setError(null)
-            }}
-            className="mt-1.5 w-full rounded-xl border border-neutral-300 bg-white px-3 py-2.5 text-sm text-neutral-900 outline-none focus:border-[#1f6b28] disabled:opacity-60"
+            onClick={openDriverPicker}
+            className="mt-1.5 flex w-full items-center justify-between gap-2 rounded-xl border border-neutral-300 bg-white px-3 py-2.5 text-left text-sm outline-none focus:border-[#1f6b28] disabled:opacity-60"
           >
-            <option value="">Escolha o motorista</option>
-            {drivers.map((driver) => (
-              <option key={driver.usuario} value={driver.usuario}>
-                {driver.nome} ({driver.usuario})
-              </option>
-            ))}
-          </select>
+            <span className={motorista ? "text-neutral-900" : "text-neutral-400"}>
+              {motorista ? motoristaLabel : "Toque para escolher o perfil"}
+            </span>
+            <span className="shrink-0 text-neutral-400" aria-hidden="true">
+              ▾
+            </span>
+          </button>
 
           {!loading && drivers.length === 0 ? (
             <p className="mt-2 text-xs text-amber-800">
@@ -403,6 +418,106 @@ export function DefinirRotaScreen({
           </p>
         ) : null}
       </div>
+
+      {pickerOpen ? (
+        <div
+          className="fixed inset-0 z-50 flex items-end justify-center sm:items-center sm:p-4"
+          role="presentation"
+        >
+          <button
+            type="button"
+            aria-label="Fechar"
+            className="absolute inset-0 bg-black/40"
+            onClick={() => setPickerOpen(false)}
+          />
+          <div
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="motorista-picker-title"
+            className="relative z-10 flex max-h-[min(85vh,36rem)] w-full max-w-lg flex-col rounded-t-2xl bg-white shadow-xl ring-1 ring-black/10 sm:rounded-2xl"
+          >
+            <div className="flex items-start gap-2 border-b border-neutral-100 px-2.5 py-2 sm:px-3">
+              <button
+                type="button"
+                onClick={() => setPickerOpen(false)}
+                aria-label="Voltar"
+                className="mt-0.5 flex h-10 w-10 shrink-0 items-center justify-center rounded-full text-neutral-700 hover:bg-neutral-100"
+              >
+                <svg viewBox="0 0 24 24" className="h-5 w-5" aria-hidden="true">
+                  <path
+                    d="M15 5 8 12l7 7"
+                    fill="none"
+                    stroke="currentColor"
+                    strokeWidth="2.2"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                  />
+                </svg>
+              </button>
+              <div className="min-w-0 flex-1 pt-1.5 pb-1">
+                <p
+                  id="motorista-picker-title"
+                  className="text-sm font-semibold text-neutral-900"
+                >
+                  Escolher motorista
+                </p>
+                <p className="mt-0.5 text-[11px] text-neutral-500">
+                  {meta.titulo} · toque em um perfil
+                </p>
+              </div>
+            </div>
+
+            <ul className="min-h-0 flex-1 overflow-y-auto divide-y divide-neutral-100">
+              {drivers.length === 0 ? (
+                <li className="px-4 py-8 text-center text-sm text-neutral-500">
+                  Nenhum perfil cadastrado.
+                </li>
+              ) : (
+                drivers.map((driver) => {
+                  const selected =
+                    pickerDraft.toLowerCase() === driver.usuario.toLowerCase()
+                  return (
+                    <li key={driver.usuario}>
+                      <button
+                        type="button"
+                        onClick={() => setPickerDraft(driver.usuario)}
+                        className={`flex w-full items-center justify-between gap-3 px-4 py-3.5 text-left transition ${
+                          selected ? "bg-[#1f6b28]/8" : "hover:bg-neutral-50"
+                        }`}
+                      >
+                        <span className="min-w-0">
+                          <span className="block text-sm font-semibold text-neutral-900">
+                            {driver.nome}
+                          </span>
+                          <span className="mt-0.5 block text-xs text-neutral-500">
+                            {driver.usuario}
+                          </span>
+                        </span>
+                        {selected ? (
+                          <span className="shrink-0 text-xs font-semibold text-[#1f6b28]">
+                            Selecionado
+                          </span>
+                        ) : null}
+                      </button>
+                    </li>
+                  )
+                })
+              )}
+            </ul>
+
+            <div className="border-t border-neutral-100 p-3 pb-[max(0.75rem,env(safe-area-inset-bottom))]">
+              <button
+                type="button"
+                disabled={!pickerDraft}
+                onClick={confirmDriverPicker}
+                className="w-full rounded-xl bg-[#1f6b28] px-3 py-2.5 text-sm font-semibold text-white disabled:opacity-60"
+              >
+                Confirmar seleção
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
     </div>
   )
 }
