@@ -9,6 +9,7 @@ const areaOptions = [
   ["armazem", "Armazém"],
   ["coleta", "Coleta"],
   ["expedicao", "Expedição"],
+  ["rota", "Rota"],
 ] as const
 
 export function UsuariosScreen({
@@ -60,6 +61,7 @@ export function UsuariosScreen({
       armazem: user.areas.armazem,
       coleta: user.areas.coleta,
       expedicao: user.areas.expedicao,
+      rota: user.areas.rota,
     }
     next[area] = !next[area]
     try {

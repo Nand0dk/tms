@@ -456,12 +456,14 @@ function HomeScreen({
           onClick: onOpenExpedicao,
         }
       : null,
-    {
-      title: "Rota",
-      description: "Sua rota confirmada",
-      icon: <RotaIcon />,
-      onClick: onOpenRota,
-    },
+    areas?.rota
+      ? {
+          title: "Rota",
+          description: "Sua rota confirmada",
+          icon: <RotaIcon />,
+          onClick: onOpenRota,
+        }
+      : null,
     areas?.recebimento
       ? {
           title: "Recebimento",
@@ -534,7 +536,6 @@ function HomeScreen({
 
 function canOpen(areas: AreaAccess | null, screen: Screen, admin: boolean) {
   if (screen === "home") return true
-  if (screen === "rota") return true
   if (screen === "historico") return admin
   if (!areas) return false
   return areas[screen]
@@ -1177,7 +1178,7 @@ function MaisScreen({
   const [rotasLoading, setRotasLoading] = useState(Boolean(username))
 
   useEffect(() => {
-    if (!username) {
+    if (!username || !areas?.rota) {
       setMinhasRotas([])
       setRotasLoading(false)
       return
@@ -1197,7 +1198,7 @@ function MaisScreen({
     return () => {
       cancelled = true
     }
-  }, [username])
+  }, [username, areas?.rota])
 
   const extras = [
     areas?.recebimento
@@ -1240,38 +1241,40 @@ function MaisScreen({
         Conta {username ? `· ${username}` : ""} · {company.name}
       </p>
 
-      <section className="sheet-vps mt-4 px-4 py-3">
-        <h2 className="text-sm font-semibold text-neutral-900">Minhas rotas</h2>
-        <p className="mt-0.5 text-xs text-neutral-500">
-          Rotas confirmadas para este motorista.
-        </p>
-        {rotasLoading ? (
-          <p className="mt-3 text-sm text-neutral-500">Carregando…</p>
-        ) : minhasRotas.length === 0 ? (
-          <p className="mt-3 text-sm text-neutral-500">
-            Nenhuma rota confirmada ainda.
+      {areas?.rota ? (
+        <section className="sheet-vps mt-4 px-4 py-3">
+          <h2 className="text-sm font-semibold text-neutral-900">Minhas rotas</h2>
+          <p className="mt-0.5 text-xs text-neutral-500">
+            Rotas confirmadas para este motorista.
           </p>
-        ) : (
-          <ul className="mt-3 flex flex-col gap-2">
-            {minhasRotas.map((rota) => (
-              <li
-                key={rota.id}
-                className="rounded-xl border border-neutral-100 bg-neutral-50 px-3 py-2.5"
-              >
-                <div className="flex items-center justify-between gap-2">
-                  <p className="text-sm font-semibold text-neutral-900">{rota.titulo}</p>
-                  <span className="text-[11px] font-medium text-[#1f6b28]">Confirmada</span>
-                </div>
-                <p className="mt-1.5 text-sm text-neutral-700">
-                  {rota.cidades.length > 0
-                    ? rota.cidades.join(" · ")
-                    : "Sem cidades"}
-                </p>
-              </li>
-            ))}
-          </ul>
-        )}
-      </section>
+          {rotasLoading ? (
+            <p className="mt-3 text-sm text-neutral-500">Carregando…</p>
+          ) : minhasRotas.length === 0 ? (
+            <p className="mt-3 text-sm text-neutral-500">
+              Nenhuma rota confirmada ainda.
+            </p>
+          ) : (
+            <ul className="mt-3 flex flex-col gap-2">
+              {minhasRotas.map((rota) => (
+                <li
+                  key={rota.id}
+                  className="rounded-xl border border-neutral-100 bg-neutral-50 px-3 py-2.5"
+                >
+                  <div className="flex items-center justify-between gap-2">
+                    <p className="text-sm font-semibold text-neutral-900">{rota.titulo}</p>
+                    <span className="text-[11px] font-medium text-[#1f6b28]">Confirmada</span>
+                  </div>
+                  <p className="mt-1.5 text-sm text-neutral-700">
+                    {rota.cidades.length > 0
+                      ? rota.cidades.join(" · ")
+                      : "Sem cidades"}
+                  </p>
+                </li>
+              ))}
+            </ul>
+          )}
+        </section>
+      ) : null}
 
       {extras.length > 0 ? (
         <div className="sheet-vps mt-4 divide-y divide-neutral-100">

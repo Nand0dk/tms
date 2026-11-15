@@ -11,6 +11,7 @@ export type AreaAccess = {
   armazem: boolean
   coleta: boolean
   expedicao: boolean
+  rota: boolean
   usuarios: boolean
 }
 

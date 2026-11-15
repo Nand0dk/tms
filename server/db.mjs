@@ -68,7 +68,8 @@ CREATE TABLE IF NOT EXISTS users (
   estoque INTEGER NOT NULL DEFAULT 0,
   armazem INTEGER NOT NULL DEFAULT 0,
   coleta INTEGER NOT NULL DEFAULT 0,
-  expedicao INTEGER NOT NULL DEFAULT 0
+  expedicao INTEGER NOT NULL DEFAULT 0,
+  rota INTEGER NOT NULL DEFAULT 0
 );
 
 CREATE TABLE IF NOT EXISTS history (
@@ -101,7 +102,7 @@ CREATE TABLE IF NOT EXISTS rota_motoristas (
 );
 `
 
-const areas = ["recebimento", "estoque", "armazem", "coleta", "expedicao"]
+const areas = ["recebimento", "estoque", "armazem", "coleta", "expedicao", "rota"]
 
 const missingTurso =
   "Configure TURSO_DATABASE_URL e TURSO_AUTH_TOKEN no painel da Vercel."
@@ -1693,8 +1694,8 @@ async function ensureAdmin(db) {
   await db.run(
     `INSERT INTO users (
       nome, usuario, senha_hash, senha_salt,
-      recebimento, estoque, armazem, coleta, expedicao
-    ) VALUES (?, 'ADM01', ?, ?, 1, 1, 1, 1, 1)`,
+      recebimento, estoque, armazem, coleta, expedicao, rota
+    ) VALUES (?, 'ADM01', ?, ?, 1, 1, 1, 1, 1, 1)`,
     "Administrador",
     password.hash,
     password.salt,
@@ -1721,6 +1722,7 @@ function areaFlags(row) {
     armazem: admin || enabled(row.armazem),
     coleta: admin || enabled(row.coleta),
     expedicao: admin || enabled(row.expedicao),
+    rota: admin || enabled(row.rota),
     usuarios: admin,
   }
 }
@@ -1732,7 +1734,7 @@ function flag(value) {
 export async function listUsers(db, input) {
   requireAdmin(input?.actor, "Somente o ADM01 pode cadastrar usuários.")
   const users = await db.all(
-    "SELECT nome, usuario, recebimento, estoque, armazem, coleta, expedicao FROM users ORDER BY rowid",
+    "SELECT nome, usuario, recebimento, estoque, armazem, coleta, expedicao, rota FROM users ORDER BY rowid",
   )
   return {
     users: users.map((user) => ({
@@ -1781,7 +1783,7 @@ export async function setUserAreas(db, input) {
   if (isAdmin(usuario)) throw new ApiError("O ADM01 já tem acesso a todas as áreas.")
   return withTransaction(db, async (tx) => {
     const current = await tx.get(
-      "SELECT usuario, recebimento, estoque, armazem, coleta, expedicao FROM users WHERE lower(usuario) = lower(?)",
+      "SELECT usuario, recebimento, estoque, armazem, coleta, expedicao, rota FROM users WHERE lower(usuario) = lower(?)",
       usuario,
     )
     if (!current) throw new ApiError("Usuário não encontrado.")
@@ -1791,16 +1793,18 @@ export async function setUserAreas(db, input) {
       armazem: flag(input.armazem),
       coleta: flag(input.coleta),
       expedicao: flag(input.expedicao),
+      rota: flag(input.rota),
     }
     await tx.run(
       `UPDATE users
-       SET recebimento = ?, estoque = ?, armazem = ?, coleta = ?, expedicao = ?
+       SET recebimento = ?, estoque = ?, armazem = ?, coleta = ?, expedicao = ?, rota = ?
        WHERE usuario = ?`,
       next.recebimento,
       next.estoque,
       next.armazem,
       next.coleta,
       next.expedicao,
+      next.rota,
       current.usuario,
     )
     const labels = {
@@ -1809,6 +1813,7 @@ export async function setUserAreas(db, input) {
       armazem: "Armazém",
       coleta: "Coleta",
       expedicao: "Expedição",
+      rota: "Rota",
     }
     for (const area of areas) {
       const before = enabled(current[area])
@@ -1990,7 +1995,7 @@ export async function loginUser(db, input) {
   if (!usuario) throw new ApiError("Informe o usuário.")
   if (!senha) throw new ApiError("Informe a senha.")
   const row = await db.get(
-    `SELECT nome, usuario, senha_hash, senha_salt, recebimento, estoque, armazem, coleta, expedicao
+    `SELECT nome, usuario, senha_hash, senha_salt, recebimento, estoque, armazem, coleta, expedicao, rota
      FROM users WHERE lower(usuario) = lower(?)`,
     usuario,
   )
