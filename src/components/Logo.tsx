@@ -10,7 +10,7 @@ export function Logo({ className = "h-28 w-auto", decorative = false }: LogoProp
     <img
       src={company.logoSrc}
       alt={decorative ? "" : company.name}
-      className={`max-w-full object-contain ${className}`}
+      className={`block max-w-full object-contain object-center ${className}`}
       draggable={false}
     />
   )

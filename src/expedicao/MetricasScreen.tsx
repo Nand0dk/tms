@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from "react"
 import { BackButton } from "../recebimento/BackButton"
 import type { Box, Product } from "../recebimento/types"
-import { formatPrazo, prazoDeEnvio } from "./rotas"
+import { formatPrazo, prazoEfetivo } from "./rotas"
 
 const DAYS = 7
 const MONTHS = 12
@@ -655,7 +655,8 @@ function groupByNota(boxes: Box[], today: string): NotaMetric[] {
     const sentDay = localDate(enviadaEm)
     const due = prazo
     const onTime = !enviada || !sentDay || !due || sentDay <= due
-    const atrasada = !enviada && Boolean(due) && due < today
+    // Atrasada a partir do dia do prazo (próxima data da rota após a entrada).
+    const atrasada = !enviada && Boolean(due) && due <= today
     return {
       notaFiscal,
       cidade: first.cidade?.trim() || "sem cidade",
@@ -675,9 +676,7 @@ function allBoxes(products: Product[]) {
 }
 
 function deadline(box: Box) {
-  if (box.prazo) return localDate(box.prazo)
-  const from = box.alocadaEm ? new Date(box.alocadaEm) : new Date()
-  return prazoDeEnvio(box.cidade ?? "", from)
+  return prazoEfetivo(box.cidade ?? "", box.prazo, box.alocadaEm)
 }
 
 function earliest(values: string[]) {

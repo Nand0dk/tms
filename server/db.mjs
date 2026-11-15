@@ -1101,7 +1101,8 @@ function prazoDaCidade(cidade, from = new Date()) {
   const start = new Date(from)
   if (Number.isNaN(start.getTime())) return ""
   start.setHours(12, 0, 0, 0)
-  for (let offset = 0; offset < 8; offset += 1) {
+  // Próximo dia de rota depois da entrada (se entrar no dia de saída, vai para a próxima data).
+  for (let offset = 1; offset <= 8; offset += 1) {
     const day = new Date(start)
     day.setDate(start.getDate() + offset)
     if (dias.includes(day.getDay())) return isoDay(day)

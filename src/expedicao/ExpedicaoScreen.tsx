@@ -6,7 +6,7 @@ import { positionFromSearch } from "../recebimento/format"
 import { ShelfReader } from "../recebimento/ShelfReader"
 import type { Box, Product } from "../recebimento/types"
 import { MetricasScreen } from "./MetricasScreen"
-import { CIDADES, formatPrazo, prazoDeEnvio, rotaDaCidade } from "./rotas"
+import { CIDADES, formatPrazo, prazoDeEnvio, prazoEfetivo, rotaDaCidade } from "./rotas"
 import { RotasScreen } from "./RotasScreen"
 
 const DIAS_SEMANA = [
@@ -845,7 +845,7 @@ function ExpedirForm({
   )
 }
 
-function NotaFiscalHistorico({
+export function NotaFiscalHistorico({
   data,
   onBack,
 }: {
@@ -1156,9 +1156,7 @@ function pendingNotas(products: Product[]): PendingNotaResumo[] {
 }
 
 function deadlineForBox(box: Box) {
-  if (box.prazo) return isoDayFromValue(box.prazo)
-  const from = box.alocadaEm ? new Date(box.alocadaEm) : new Date()
-  return prazoDeEnvio(box.cidade ?? "", from)
+  return prazoEfetivo(box.cidade ?? "", box.prazo, box.alocadaEm)
 }
 
 function matchesWeekdayFilter(nota: PendingNotaResumo, day: number | null) {
@@ -1171,22 +1169,13 @@ function matchesWeekdayFilter(nota: PendingNotaResumo, day: number | null) {
   return date.getDay() === day
 }
 
-function isoDayFromValue(value: string) {
-  const match = value.match(/^(\d{4}-\d{2}-\d{2})/)
-  if (match && value.length <= 10) return match[1]
-  const date = new Date(value)
-  if (Number.isNaN(date.getTime())) return match?.[1] ?? ""
-  const year = date.getFullYear()
-  const month = String(date.getMonth() + 1).padStart(2, "0")
-  const day = String(date.getDate()).padStart(2, "0")
-  return `${year}-${month}-${day}`
-}
-
 function prazoHint(cidade: string, cidadeDigitada: string) {
   const destino = cidadeDigitada.trim() || cidade.trim()
   const prazo = prazoDeEnvio(destino)
   const rota = rotaDaCidade(destino)
-  if (rota) return `Próximo envio: ${formatPrazo(prazo)} (${rota.titulo})`
+  if (rota) {
+    return `Prazo: ${formatPrazo(prazo)} — próxima saída após a entrada (${rota.titulo})`
+  }
   return `Prazo: ${formatPrazo(prazo)} (até 7 dias)`
 }
 

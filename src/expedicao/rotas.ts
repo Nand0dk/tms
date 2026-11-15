@@ -84,11 +84,15 @@ export function rotaDaCidade(cidade: string) {
   return item
 }
 
+/**
+ * Próximo dia de rota DEPOIS da data de entrada (não conta o próprio dia).
+ * Se a NF entra no dia de saída, o prazo vai para a próxima data dessa rota.
+ */
 export function proximoPrazo(cidade: string, from = new Date()) {
   const rota = rotaDaCidade(cidade)
   if (!rota) return ""
   const start = atNoon(from)
-  for (let offset = 0; offset < 8; offset += 1) {
+  for (let offset = 1; offset <= 8; offset += 1) {
     const day = new Date(start)
     day.setDate(start.getDate() + offset)
     if (rota.dias.includes(day.getDay())) return toIsoDay(day)
@@ -102,6 +106,37 @@ export function prazoDeEnvio(cidade: string, from = new Date()) {
   const day = atNoon(from)
   day.setDate(day.getDate() + 7)
   return toIsoDay(day)
+}
+
+/** Prazo efetivo para exibição/atraso — corrige NFs antigas gravadas no mesmo dia da rota. */
+export function prazoEfetivo(
+  cidade: string,
+  prazoGravado?: string | null,
+  alocadaEm?: string | null,
+) {
+  const from = alocadaEm ? new Date(alocadaEm) : new Date()
+  const allocatedDay = toIsoDay(atNoon(alocadaEm ? new Date(alocadaEm) : from))
+  const stored = normalizeIsoDay(prazoGravado)
+  const computed = prazoDeEnvio(cidade, from)
+  if (stored && allocatedDay && stored === allocatedDay) return computed || stored
+  if (stored && allocatedDay && stored > allocatedDay) return stored
+  return stored || computed
+}
+
+export function isAtrasada(
+  cidade: string,
+  prazoGravado: string | null | undefined,
+  alocadaEm: string | null | undefined,
+  today = toIsoDay(atNoon(new Date())),
+) {
+  const due = prazoEfetivo(cidade, prazoGravado, alocadaEm)
+  return Boolean(due) && due <= today
+}
+
+function normalizeIsoDay(value?: string | null) {
+  if (!value) return ""
+  const match = String(value).trim().match(/^(\d{4}-\d{2}-\d{2})/)
+  return match?.[1] ?? ""
 }
 
 export function formatPrazo(iso: string) {
