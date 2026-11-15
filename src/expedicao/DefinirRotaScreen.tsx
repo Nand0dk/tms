@@ -40,12 +40,39 @@ export function DefinirRotaScreen({
   }
 
   async function refresh() {
-    const [routesData, driversData] = await Promise.all([
-      loadRoutes(),
-      loadRouteDrivers(),
-    ])
-    applyPayload(routesData)
-    setDrivers(driversData.drivers)
+    const routesResult = await loadRoutes().then(
+      (data) => ({ ok: true as const, data }),
+      (caught: unknown) => ({ ok: false as const, caught }),
+    )
+    const driversResult = await loadRouteDrivers().then(
+      (data) => ({ ok: true as const, data }),
+      (caught: unknown) => ({ ok: false as const, caught }),
+    )
+
+    if (routesResult.ok) {
+      applyPayload(routesResult.data)
+    }
+    if (driversResult.ok) {
+      setDrivers(driversResult.data.drivers)
+    }
+
+    if (!routesResult.ok && !driversResult.ok) {
+      throw routesResult.caught instanceof Error
+        ? routesResult.caught
+        : new Error("Não foi possível carregar as rotas.")
+    }
+    if (!routesResult.ok) {
+      throw routesResult.caught instanceof Error
+        ? routesResult.caught
+        : new Error("Não foi possível carregar as rotas.")
+    }
+    if (!driversResult.ok) {
+      setError(
+        driversResult.caught instanceof Error
+          ? driversResult.caught.message
+          : "Não foi possível carregar os motoristas.",
+      )
+    }
   }
 
   useEffect(() => {
@@ -87,6 +114,7 @@ export function DefinirRotaScreen({
 
   const lotada = listaDaRota.length >= MAX_CIDADES_POR_ROTA
   const vagas = Math.max(0, MAX_CIDADES_POR_ROTA - listaDaRota.length)
+  const driverBusy = saving || loading
 
   async function handleAdd(event: FormEvent) {
     event.preventDefault()
@@ -154,10 +182,14 @@ export function DefinirRotaScreen({
   }
 
   async function handleConfirm() {
+    if (!motorista) {
+      setError("Selecione o motorista antes de confirmar a rota.")
+      return
+    }
     setSaving(true)
     setError(null)
     try {
-      if (motorista && motorista !== (rotaAtual?.motorista ?? "")) {
+      if (motorista !== (rotaAtual?.motorista ?? "")) {
         await saveRouteDriver(actor, rotaNumero, motorista)
       }
       const data = await confirmRoute(actor, rotaNumero)
@@ -263,56 +295,36 @@ export function DefinirRotaScreen({
               })}
             </ul>
           )}
-        </section>
 
-        <form
-          className="mt-4 flex flex-col gap-3"
-          onSubmit={(event) => void handleAdd(event)}
-        >
-          <Field
-            id="rota-cidade"
-            label={
-              lotada
-                ? `${meta.titulo} está completa`
-                : `Adicionar cidade · ${vagas} ${vagas === 1 ? "vaga" : "vagas"}`
-            }
-            value={novaCidade}
-            placeholder="ex.: Sorocaba"
-            onChange={(value) => {
-              setNovaCidade(value)
-              setError(null)
-            }}
-          />
-          <button
-            type="submit"
-            disabled={saving || loading || lotada}
-            className="w-full rounded-xl bg-[#1f6b28] px-3 py-2.5 text-sm font-semibold text-white disabled:opacity-60"
-          >
-            {saving
-              ? "Salvando…"
-              : lotada
-                ? "Limite de 5 cidades atingido"
-                : `Adicionar à ${meta.titulo}`}
-          </button>
-        </form>
+          {lotada ? (
+            <p className="mt-3 text-xs text-neutral-600">
+              Limite de {MAX_CIDADES_POR_ROTA} cidades atingido. Remova uma cidade para
+              adicionar outra — o motorista pode ser definido normalmente.
+            </p>
+          ) : null}
+        </section>
 
         <section className="mt-5 rounded-xl bg-white px-3 py-3 shadow-sm ring-1 ring-black/5">
           <h2 className="text-base font-semibold">Motorista</h2>
           <p className="mt-0.5 text-xs text-neutral-500">
-            Um motorista por rota. Ao confirmar, a rota aparece no perfil dele.
+            Um motorista por rota. Independe do limite de cidades. Ao confirmar, a rota
+            aparece no perfil dele.
           </p>
-          <label className="mt-3 block text-sm font-medium text-neutral-800" htmlFor="rota-motorista">
+          <label
+            className="mt-3 block text-sm font-medium text-neutral-800"
+            htmlFor="rota-motorista"
+          >
             Selecionar motorista
           </label>
           <select
             id="rota-motorista"
             value={motorista}
-            disabled={saving || loading}
+            disabled={driverBusy}
             onChange={(event) => {
               setMotorista(event.target.value)
               setError(null)
             }}
-            className="mt-1.5 w-full rounded-xl border border-neutral-300 bg-white px-3 py-2.5 text-sm text-neutral-900 outline-none focus:border-[#1f6b28]"
+            className="mt-1.5 w-full rounded-xl border border-neutral-300 bg-white px-3 py-2.5 text-sm text-neutral-900 outline-none focus:border-[#1f6b28] disabled:opacity-60"
           >
             <option value="">Escolha o motorista</option>
             {drivers.map((driver) => (
@@ -321,6 +333,13 @@ export function DefinirRotaScreen({
               </option>
             ))}
           </select>
+
+          {!loading && drivers.length === 0 ? (
+            <p className="mt-2 text-xs text-amber-800">
+              Nenhum perfil cadastrado. Crie usuários em Usuários para escolher o
+              motorista.
+            </p>
+          ) : null}
 
           {rotaAtual?.confirmada ? (
             <p className="mt-2 text-xs font-medium text-[#1f6b28]">
@@ -336,7 +355,7 @@ export function DefinirRotaScreen({
           <div className="mt-3 grid grid-cols-1 gap-2 sm:grid-cols-2">
             <button
               type="button"
-              disabled={saving || loading || !motorista}
+              disabled={driverBusy || !motorista}
               onClick={() => void handleSaveDriver()}
               className="w-full rounded-xl border border-[#1f6b28] px-3 py-2.5 text-sm font-semibold text-[#1f6b28] disabled:opacity-60"
             >
@@ -344,7 +363,7 @@ export function DefinirRotaScreen({
             </button>
             <button
               type="button"
-              disabled={saving || loading}
+              disabled={driverBusy || !motorista}
               onClick={() => void handleConfirm()}
               className="w-full rounded-xl bg-[#1f6b28] px-3 py-2.5 text-sm font-semibold text-white disabled:opacity-60"
             >
@@ -352,6 +371,31 @@ export function DefinirRotaScreen({
             </button>
           </div>
         </section>
+
+        {!lotada ? (
+          <form
+            className="mt-5 flex flex-col gap-3"
+            onSubmit={(event) => void handleAdd(event)}
+          >
+            <Field
+              id="rota-cidade"
+              label={`Adicionar cidade · ${vagas} ${vagas === 1 ? "vaga" : "vagas"}`}
+              value={novaCidade}
+              placeholder="ex.: Sorocaba"
+              onChange={(value) => {
+                setNovaCidade(value)
+                setError(null)
+              }}
+            />
+            <button
+              type="submit"
+              disabled={saving || loading}
+              className="w-full rounded-xl border border-neutral-300 bg-white px-3 py-2.5 text-sm font-semibold text-neutral-800 disabled:opacity-60"
+            >
+              {saving ? "Salvando…" : `Adicionar à ${meta.titulo}`}
+            </button>
+          </form>
+        ) : null}
 
         {error ? (
           <p role="alert" className="mt-3 text-sm text-red-700">

@@ -1385,21 +1385,17 @@ export async function listRoutes(db) {
 }
 
 export async function listRouteDrivers(db) {
+  // Todos os perfis cadastrados — motorista é escolha de usuário, não exige área Expedição.
   const users = await db.all(
-    `SELECT nome, usuario, recebimento, estoque, armazem, coleta, expedicao
+    `SELECT nome, usuario
      FROM users
      ORDER BY rowid`,
   )
   return {
-    drivers: users
-      .filter((user) => {
-        const flags = areaFlags(user)
-        return flags.expedicao || isAdmin(user.usuario)
-      })
-      .map((user) => ({
-        nome: user.nome,
-        usuario: user.usuario,
-      })),
+    drivers: users.map((user) => ({
+      nome: user.nome,
+      usuario: user.usuario,
+    })),
   }
 }
 
@@ -1412,13 +1408,10 @@ export async function setRouteDriver(db, input) {
   if (!motorista) throw new ApiError("Selecione o motorista.")
 
   const user = await db.get(
-    "SELECT nome, usuario, expedicao FROM users WHERE lower(usuario) = lower(?)",
+    "SELECT nome, usuario FROM users WHERE lower(usuario) = lower(?)",
     motorista,
   )
   if (!user) throw new ApiError("Motorista não encontrado.")
-  if (!isAdmin(user.usuario) && !enabled(user.expedicao)) {
-    throw new ApiError("O usuário precisa ter acesso à Expedição.")
-  }
 
   await withTransaction(db, async (tx) => {
     await tx.run(
