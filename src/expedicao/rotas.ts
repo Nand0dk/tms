@@ -1,85 +1,143 @@
-const CIDADES_SEGUNDA_QUARTA = sorted([
+export const MAX_CIDADES_POR_ROTA = 5
+export const TOTAL_ROTAS = 5
+
+const CIDADES_ROTA_1_3 = sorted([
   "Barueri",
   "Campinas",
   "Guarulhos",
   "Indaiatuba",
   "Itapevi",
-  "Itu",
-  "Mauá",
-  "Salto",
-  "São Paulo",
-  "Vinhedo",
 ])
 
-const CIDADES_TERCA_QUINTA = sorted([
+const CIDADES_ROTA_2_4 = sorted([
   "Araraquara",
   "Cabreúva",
   "Capivari",
   "Elias Fausto",
   "Itupeva",
-  "Ituverava",
-  "Jundiaí",
-  "Limeira",
-  "Sumaré",
-  "São Joaquim da Barra",
 ])
 
-const CIDADES_SEXTA = sorted([
+const CIDADES_ROTA_5 = sorted([
   "Araçoiaba da Serra",
   "Bofete",
   "Boituva",
   "Botucatu",
   "Capela do Alto",
-  "Cesário Lange",
-  "Itapetininga",
-  "Jumirim",
-  "Lençóis Paulista",
-  "São Manuel",
-  "Tietê",
 ])
 
 /** Cidades na lista sem dia de rota fixo — prazo padrão de +7 dias. */
 const CIDADES_PRAZO_PADRAO = sorted(["Sorocaba"])
 
-export const ROTAS = [
+export const DIAS_ROTA = [
+  { id: "rota1", titulo: "Rota 1", diaSemana: "Segunda-feira", dia: 1 },
+  { id: "rota2", titulo: "Rota 2", diaSemana: "Terça-feira", dia: 2 },
+  { id: "rota3", titulo: "Rota 3", diaSemana: "Quarta-feira", dia: 3 },
+  { id: "rota4", titulo: "Rota 4", diaSemana: "Quinta-feira", dia: 4 },
+  { id: "rota5", titulo: "Rota 5", diaSemana: "Sexta-feira", dia: 5 },
+] as const
+
+export type RotaDia = {
+  id: string
+  titulo: string
+  diaSemana: string
+  dias: number[]
+  cidades: string[]
+}
+
+export type CidadeRota = {
+  cidade: string
+  dias: number[]
+  titulo: string
+}
+
+export const DEFAULT_ROTAS: RotaDia[] = [
   {
-    id: "seg",
-    titulo: "Segunda-feira",
+    id: "rota1",
+    titulo: "Rota 1",
+    diaSemana: "Segunda-feira",
     dias: [1],
-    cidades: CIDADES_SEGUNDA_QUARTA,
+    cidades: CIDADES_ROTA_1_3,
   },
   {
-    id: "ter",
-    titulo: "Terça-feira",
+    id: "rota2",
+    titulo: "Rota 2",
+    diaSemana: "Terça-feira",
     dias: [2],
-    cidades: CIDADES_TERCA_QUINTA,
+    cidades: CIDADES_ROTA_2_4,
   },
   {
-    id: "qua",
-    titulo: "Quarta-feira",
+    id: "rota3",
+    titulo: "Rota 3",
+    diaSemana: "Quarta-feira",
     dias: [3],
-    cidades: CIDADES_SEGUNDA_QUARTA,
+    cidades: CIDADES_ROTA_1_3,
   },
   {
-    id: "qui",
-    titulo: "Quinta-feira",
+    id: "rota4",
+    titulo: "Rota 4",
+    diaSemana: "Quinta-feira",
     dias: [4],
-    cidades: CIDADES_TERCA_QUINTA,
+    cidades: CIDADES_ROTA_2_4,
   },
   {
-    id: "sex",
-    titulo: "Sexta-feira",
+    id: "rota5",
+    titulo: "Rota 5",
+    diaSemana: "Sexta-feira",
     dias: [5],
-    cidades: CIDADES_SEXTA,
+    cidades: CIDADES_ROTA_5,
   },
 ]
 
-export const CIDADES = mergeCidades(ROTAS, CIDADES_PRAZO_PADRAO)
+let activeRotas: RotaDia[] = DEFAULT_ROTAS
+export const CIDADES: CidadeRota[] = mergeCidades(DEFAULT_ROTAS, CIDADES_PRAZO_PADRAO)
+
+/** @deprecated use getRotas() — kept for compatibility */
+export const ROTAS = DEFAULT_ROTAS
+
+export function getRotas() {
+  return activeRotas
+}
+
+export function getCidades() {
+  return CIDADES
+}
+
+export function applyRoutes(entries: { cidade: string; dias: number[] }[]) {
+  const byDay = new Map<number, string[]>()
+  for (const meta of DIAS_ROTA) byDay.set(meta.dia, [])
+
+  for (const entry of entries) {
+    const nome = entry.cidade.trim()
+    if (!nome) continue
+    for (const rawDia of entry.dias) {
+      const dia = Number(rawDia)
+      if (!byDay.has(dia)) continue
+      const list = byDay.get(dia)!
+      if (!list.some((item) => item.toLowerCase() === nome.toLowerCase())) {
+        list.push(nome)
+      }
+    }
+  }
+
+  activeRotas = DIAS_ROTA.map((meta) => ({
+    id: meta.id,
+    titulo: meta.titulo,
+    diaSemana: meta.diaSemana,
+    dias: [meta.dia],
+    cidades: sorted(byDay.get(meta.dia) ?? []).slice(0, MAX_CIDADES_POR_ROTA),
+  }))
+
+  const extras = CIDADES_PRAZO_PADRAO.filter(
+    (cidade) =>
+      !entries.some((entry) => entry.cidade.toLowerCase() === cidade.toLowerCase()),
+  )
+  const next = mergeCidades(activeRotas, extras)
+  CIDADES.splice(0, CIDADES.length, ...next)
+}
 
 export function rotaDaCidade(cidade: string) {
   const wanted = cidade.trim().toLowerCase()
   const item = CIDADES.find((entry) => entry.cidade.toLowerCase() === wanted) ?? null
-  // Cidades sem dia de rota fixo usam o prazo padrão (+7), não uma rota semanal.
   if (!item || item.dias.length === 0) return null
   return item
 }
@@ -149,7 +207,7 @@ function sorted(cidades: string[]) {
   return [...cidades].sort((a, b) => a.localeCompare(b, "pt-BR"))
 }
 
-function mergeCidades(rotas: typeof ROTAS, extras: string[] = []) {
+function mergeCidades(rotas: RotaDia[], extras: string[] = []) {
   const byName = new Map<string, { cidade: string; dias: number[]; titulos: string[] }>()
   for (const rota of rotas) {
     for (const cidade of rota.cidades) {
@@ -180,7 +238,7 @@ function mergeCidades(rotas: typeof ROTAS, extras: string[] = []) {
   return [...byName.values()]
     .map((item) => ({
       cidade: item.cidade,
-      dias: item.dias,
+      dias: item.dias.sort((a, b) => a - b),
       titulo: item.titulos.join(" / "),
     }))
     .sort((a, b) => a.cidade.localeCompare(b.cidade, "pt-BR"))

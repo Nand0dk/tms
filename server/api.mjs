@@ -8,12 +8,18 @@ import {
   ApiError,
   collectBoxes,
   reallocateBoxes,
+  returnNotaFiscal,
   deleteLot,
   deletePosition,
   deleteProduct,
   deleteShelf,
   deleteWarehouse,
+  confirmRoute,
   listHistory,
+  listMyRoutes,
+  listPositionNotes,
+  listRouteDrivers,
+  listRoutes,
   listUsers,
   loginUser,
   lookupNotaFiscal,
@@ -21,10 +27,14 @@ import {
   registerNotaFiscal,
   readState,
   registerUser,
+  removeRouteCityDay,
   removeUser,
+  saveRouteCity,
   setPositions,
+  setRouteDriver,
   setUserAreas,
   shipBoxes,
+  shipPositionBoxes,
   userStatus,
 } from "./db.mjs"
 
@@ -92,6 +102,11 @@ function queryValue(req, name) {
 async function handle(db, req, pathname) {
   if (req.method === "GET" && pathname === "/api/state") return readState(db)
   if (req.method === "GET" && pathname === "/api/users/status") return userStatus(db)
+  if (req.method === "GET" && pathname === "/api/routes") return listRoutes(db)
+  if (req.method === "GET" && pathname === "/api/routes/drivers") return listRouteDrivers(db)
+  if (req.method === "GET" && pathname === "/api/routes/mine") {
+    return listMyRoutes(db, queryValue(req, "actor"))
+  }
   if (req.method === "GET" && pathname === "/api/history") {
     return listHistory(db, queryValue(req, "actor"))
   }
@@ -106,6 +121,7 @@ async function handle(db, req, pathname) {
   if (pathname === "/api/shipments") return shipBoxes(db, body)
   if (pathname === "/api/allocations") return allocateBoxes(db, body)
   if (pathname === "/api/reallocations") return reallocateBoxes(db, body)
+  if (pathname === "/api/returns") return returnNotaFiscal(db, body)
   if (pathname === "/api/nota-fiscal") return lookupNotaFiscal(db, body)
   if (pathname === "/api/nota-fiscal/register") return registerNotaFiscal(db, body)
   if (pathname === "/api/warehouses/delete") return deleteWarehouse(db, body)
@@ -114,6 +130,12 @@ async function handle(db, req, pathname) {
   if (pathname === "/api/shelves") return addShelf(db, body)
   if (pathname === "/api/shelves/positions") return addShelfPositions(db, body)
   if (pathname === "/api/positions/delete") return deletePosition(db, body)
+  if (pathname === "/api/routes") return saveRouteCity(db, body)
+  if (pathname === "/api/routes/remove") return removeRouteCityDay(db, body)
+  if (pathname === "/api/routes/driver") return setRouteDriver(db, body)
+  if (pathname === "/api/routes/confirm") return confirmRoute(db, body)
+  if (pathname === "/api/routes/position-notes") return listPositionNotes(db, body)
+  if (pathname === "/api/routes/ship-position") return shipPositionBoxes(db, body)
   if (pathname === "/api/users/list") return listUsers(db, body)
   if (pathname === "/api/users/permissions") return setUserAreas(db, body)
   if (pathname === "/api/users/delete") return removeUser(db, body)

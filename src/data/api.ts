@@ -133,6 +133,20 @@ export function saveReallocation(
   })
 }
 
+export function saveReturn(
+  actor: string,
+  notaFiscal: string,
+  cidade?: string,
+  observacao?: string,
+) {
+  return send("/api/returns", {
+    actor,
+    notaFiscal,
+    cidade,
+    observacao,
+  })
+}
+
 export function saveWarehouse(actor: string, warehouse: Pick<Warehouse, "codigo" | "nome">) {
   return send("/api/warehouses", { actor, ...warehouse })
 }
@@ -182,6 +196,7 @@ export type NotaFiscalLookup = {
   quantidade: number
   expedidaPor: string | null
   expedidaEm: string | null
+  observacaoRetorno?: string | null
   items: NotaFiscalLookupItem[]
 }
 
@@ -229,4 +244,90 @@ export function removeUser(actor: string, usuario: string) {
 
 export function loginUser(usuario: string, senha: string) {
   return request<UserAccount>("/api/login", { usuario, senha })
+}
+
+export type RouteCity = {
+  cidade: string
+  dias: number[]
+}
+
+export type RouteInfo = {
+  id: string
+  titulo: string
+  diaSemana: string
+  dias: number[]
+  cidades: string[]
+  motorista: string
+  motoristaNome: string
+  confirmada: boolean
+  confirmadaEm: string
+}
+
+export type RoutesPayload = {
+  cidades: RouteCity[]
+  rotas: RouteInfo[]
+}
+
+export type RouteDriver = {
+  nome: string
+  usuario: string
+}
+
+export function loadRoutes() {
+  return request<RoutesPayload>("/api/routes")
+}
+
+export function saveRouteCity(actor: string, cidade: string, dias: number[]) {
+  return request<RoutesPayload>("/api/routes", { actor, cidade, dias })
+}
+
+export function removeRouteCityDay(actor: string, cidade: string, dia: number) {
+  return request<RoutesPayload>("/api/routes/remove", { actor, cidade, dia })
+}
+
+export function loadRouteDrivers() {
+  return request<{ drivers: RouteDriver[] }>("/api/routes/drivers")
+}
+
+export function saveRouteDriver(actor: string, rota: number, motorista: string) {
+  return request<RoutesPayload>("/api/routes/driver", { actor, rota, motorista })
+}
+
+export function confirmRoute(actor: string, rota: number) {
+  return request<RoutesPayload>("/api/routes/confirm", { actor, rota })
+}
+
+export function loadMyRoutes(actor: string) {
+  return request<{ rotas: RouteInfo[] }>(
+    `/api/routes/mine?actor=${encodeURIComponent(actor)}`,
+  )
+}
+
+export type PositionNote = {
+  notaFiscal: string
+  quantidade: number
+  boxIds: string[]
+  cidade: string
+  prazo: string
+}
+
+export type PositionNotesPayload = {
+  posicao: string
+  armazemCodigo: string | null
+  notas: PositionNote[]
+}
+
+export function loadPositionNotes(posicao: string, armazemCodigo?: string) {
+  return request<PositionNotesPayload>("/api/routes/position-notes", {
+    posicao,
+    armazemCodigo,
+  })
+}
+
+export function shipPosition(
+  actor: string,
+  posicao: string,
+  armazemCodigo?: string,
+) {
+  return send("/api/routes/ship-position", { actor, posicao, armazemCodigo })
 }

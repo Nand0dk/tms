@@ -83,7 +83,21 @@ CREATE TABLE IF NOT EXISTS notas_fiscais (
   posicao TEXT NOT NULL DEFAULT '',
   quantidade INTEGER NOT NULL DEFAULT 0,
   criado_em TEXT NOT NULL,
-  actor TEXT NOT NULL DEFAULT ''
+  actor TEXT NOT NULL DEFAULT '',
+  observacao_retorno TEXT NOT NULL DEFAULT ''
+);
+
+CREATE TABLE IF NOT EXISTS rota_cidades (
+  cidade TEXT PRIMARY KEY,
+  dias TEXT NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS rota_motoristas (
+  rota INTEGER PRIMARY KEY,
+  motorista TEXT NOT NULL DEFAULT '',
+  motorista_nome TEXT NOT NULL DEFAULT '',
+  confirmada INTEGER NOT NULL DEFAULT 0,
+  confirmada_em TEXT NOT NULL DEFAULT ''
 );
 `
 
@@ -148,12 +162,18 @@ export async function openDatabase() {
   const db = bind(client)
   await ensureUserColumns(db)
   await ensureBoxColumns(db)
+  await ensureNotaFiscalColumns(db)
   await withTransaction(db, async (tx) => {
     await tx.run(
       "INSERT INTO meta (key, value) VALUES ('next_box', '1') ON CONFLICT(key) DO NOTHING",
     )
     await ensureAdmin(tx)
+    await seedRotaCidades(tx)
+    await migrateRotasLimitadas(tx)
+    await seedRotaMotoristas(tx)
   })
+  await enforceMaxCidadesPorRota(db)
+  await refreshCidadeDias(db)
   return db
 }
 
@@ -833,6 +853,76 @@ export async function reallocateBoxes(db, input) {
   })
 }
 
+/** Desfaz o envio e reagenda o prazo para a próxima rota da cidade. */
+export async function returnNotaFiscal(db, input) {
+  const notaFiscal = text(input.notaFiscal)
+  const cidadeInformada = text(input.cidade)
+  const observacao = text(input.observacao)
+  if (!notaFiscal) throw new ApiError("Informe a nota fiscal.")
+  if (!observacao) throw new ApiError("Informe o motivo do retorno.")
+  const normalized = normalizeNotaFiscal(notaFiscal)
+  const now = new Date()
+  return withTransaction(db, async (tx) => {
+    const rows = await tx.all(
+      `SELECT id, nota_fiscal, expedida, cidade, posicao
+       FROM boxes
+       WHERE nota_fiscal IS NOT NULL AND nota_fiscal != ''`,
+    )
+    const related = rows.filter((box) =>
+      notaFiscalMatches(box.nota_fiscal, notaFiscal, normalized),
+    )
+    if (related.length === 0) {
+      throw new ApiError("Nota fiscal não encontrada.")
+    }
+    const shipped = related.filter((box) => Number(box.expedida) === 1)
+    if (shipped.length === 0) {
+      throw new ApiError("Esta nota fiscal não está enviada.")
+    }
+    const cidadeGravada = shipped
+      .map((box) => text(box.cidade))
+      .find((value) => Boolean(value))
+    const cidade = cidadeInformada || cidadeGravada || ""
+    if (!cidade) {
+      throw new ApiError("Informe a cidade da rota para reagendar o prazo.")
+    }
+    const prazo = prazoDeEnvio(cidade, now)
+    const ids = shipped.map((box) => box.id)
+    const alocadaEm = now.toISOString()
+    for (const id of ids) {
+      await tx.run(
+        `UPDATE boxes
+         SET expedida = 0, enviada_em = '', coletada = 0,
+             cidade = ?, prazo = ?, alocada_em = ?
+         WHERE id = ?`,
+        cidade,
+        prazo,
+        alocadaEm,
+        id,
+      )
+    }
+    const nfKey = shipped[0].nota_fiscal || notaFiscal
+    await upsertNotaFiscal(tx, {
+      notaFiscal: nfKey,
+      posicao: text(shipped[0].posicao),
+      quantidade: ids.length,
+      actor: eventActor(input),
+    })
+    await tx.run(
+      `UPDATE notas_fiscais
+       SET observacao_retorno = ?
+       WHERE lower(nota_fiscal) = lower(?)`,
+      observacao,
+      nfKey,
+    )
+    await logEvent(
+      tx,
+      input,
+      `${eventActor(input)} retornou a nota fiscal ${notaFiscal} ao sistema (${ids.length === 1 ? "1 caixa" : `${ids.length} caixas`}) para ${cidade} com prazo ${prazo}. Motivo: ${observacao}.`,
+    )
+    return readState(tx)
+  })
+}
+
 async function upsertNotaFiscal(db, { notaFiscal, posicao, quantidade, actor }) {
   const now = new Date().toISOString()
   const normalized = normalizeNotaFiscal(notaFiscal)
@@ -1002,6 +1092,17 @@ async function ensureBoxColumns(db) {
   await backfillBoxTimes(db)
 }
 
+async function ensureNotaFiscalColumns(db) {
+  const columns = new Set(
+    (await db.all("PRAGMA table_info(notas_fiscais)")).map((column) => column.name),
+  )
+  if (!columns.has("observacao_retorno")) {
+    await db.raw.execute(
+      "ALTER TABLE notas_fiscais ADD COLUMN observacao_retorno TEXT NOT NULL DEFAULT ''",
+    )
+  }
+}
+
 async function backfillBoxTimes(db) {
   const done = await db.get("SELECT value FROM meta WHERE key = 'box_times_backfill'")
   if (done?.value === "1") return
@@ -1054,38 +1155,540 @@ function dateOnly(value) {
   return `${year}-${month}-${day}`
 }
 
-const cidadeDias = {
-  guarulhos: [1, 3],
-  itapevi: [1, 3],
-  barueri: [1, 3],
-  mauá: [1, 3],
-  "são paulo": [1, 3],
-  itu: [1, 3],
-  salto: [1, 3],
-  indaiatuba: [1, 3],
-  vinhedo: [1, 3],
-  campinas: [1, 3],
-  jundiaí: [2, 4],
-  cabreúva: [2, 4],
-  itupeva: [2, 4],
-  capivari: [2, 4],
-  "elias fausto": [2, 4],
-  sumaré: [2, 4],
-  araraquara: [2, 4],
-  limeira: [2, 4],
-  ituverava: [2, 4],
-  "são joaquim da barra": [2, 4],
-  boituva: [5],
-  botucatu: [5],
-  bofete: [5],
-  "lençóis paulista": [5],
-  "são manuel": [5],
-  itapetininga: [5],
-  "araçoiaba da serra": [5],
-  "capela do alto": [5],
-  tietê: [5],
-  jumirim: [5],
-  "cesário lange": [5],
+const MAX_CIDADES_POR_ROTA = 5
+
+const DEFAULT_ROTA_SEED = [
+  ["Barueri", [1, 3]],
+  ["Campinas", [1, 3]],
+  ["Guarulhos", [1, 3]],
+  ["Indaiatuba", [1, 3]],
+  ["Itapevi", [1, 3]],
+  ["Araraquara", [2, 4]],
+  ["Cabreúva", [2, 4]],
+  ["Capivari", [2, 4]],
+  ["Elias Fausto", [2, 4]],
+  ["Itupeva", [2, 4]],
+  ["Araçoiaba da Serra", [5]],
+  ["Bofete", [5]],
+  ["Boituva", [5]],
+  ["Botucatu", [5]],
+  ["Capela do Alto", [5]],
+]
+
+/** Runtime map cidade(lower) -> dias — synced from rota_cidades */
+let cidadeDias = Object.fromEntries(
+  DEFAULT_ROTA_SEED.map(([cidade, dias]) => [cidade.toLowerCase(), dias]),
+)
+
+async function seedRotaCidades(tx) {
+  const existing = await tx.get("SELECT COUNT(*) AS total FROM rota_cidades")
+  if (Number(existing?.total) > 0) return
+  for (const [cidade, dias] of DEFAULT_ROTA_SEED) {
+    await tx.run(
+      "INSERT INTO rota_cidades (cidade, dias) VALUES (?, ?)",
+      cidade,
+      JSON.stringify(dias),
+    )
+  }
+}
+
+/** Migra para o modelo de 5 rotas × até 5 cidades (reaplica o seed limitado). */
+async function migrateRotasLimitadas(tx) {
+  const flag = await tx.get("SELECT value FROM meta WHERE key = 'rota_limit_v3'")
+  if (flag?.value === "1") return
+  await tx.run("DELETE FROM rota_cidades")
+  for (const [cidade, dias] of DEFAULT_ROTA_SEED) {
+    await tx.run(
+      "INSERT INTO rota_cidades (cidade, dias) VALUES (?, ?)",
+      cidade,
+      JSON.stringify(dias),
+    )
+  }
+  await tx.run(
+    "INSERT INTO meta (key, value) VALUES ('rota_limit_v3', '1') ON CONFLICT(key) DO UPDATE SET value = '1'",
+  )
+}
+
+async function seedRotaMotoristas(tx) {
+  for (const rota of [1, 2, 3, 4, 5]) {
+    await tx.run(
+      `INSERT INTO rota_motoristas (rota, motorista, motorista_nome, confirmada, confirmada_em)
+       VALUES (?, '', '', 0, '')
+       ON CONFLICT(rota) DO NOTHING`,
+      rota,
+    )
+  }
+}
+
+/** Mantém no máximo 5 cidades por rota (dia 1–5). */
+async function enforceMaxCidadesPorRota(db) {
+  const rows = await db.all("SELECT cidade, dias FROM rota_cidades")
+  const byDay = { 1: [], 2: [], 3: [], 4: [], 5: [] }
+  for (const row of rows) {
+    const cidade = String(row.cidade || "").trim()
+    if (!cidade) continue
+    for (const rawDia of parseDias(row.dias)) {
+      const dia = Number(rawDia)
+      if (!byDay[dia]) continue
+      byDay[dia].push(cidade)
+    }
+  }
+
+  const remove = new Map()
+  for (const dia of [1, 2, 3, 4, 5]) {
+    const sorted = [...new Set(byDay[dia])].sort((a, b) =>
+      a.localeCompare(b, "pt-BR"),
+    )
+    for (const cidade of sorted.slice(MAX_CIDADES_POR_ROTA)) {
+      const key = cidade.toLowerCase()
+      const dias = remove.get(key) ?? new Set()
+      dias.add(dia)
+      remove.set(key, dias)
+    }
+  }
+  if (remove.size === 0) return
+
+  await withTransaction(db, async (tx) => {
+    for (const [key, diasRemover] of remove) {
+      const row = await tx.get(
+        "SELECT cidade, dias FROM rota_cidades WHERE lower(cidade) = lower(?)",
+        key,
+      )
+      if (!row) continue
+      const dias = parseDias(row.dias).filter((dia) => !diasRemover.has(Number(dia)))
+      if (dias.length === 0) {
+        await tx.run("DELETE FROM rota_cidades WHERE lower(cidade) = lower(?)", key)
+      } else {
+        await tx.run(
+          "UPDATE rota_cidades SET dias = ? WHERE lower(cidade) = lower(?)",
+          JSON.stringify(dias),
+          key,
+        )
+      }
+    }
+  })
+}
+
+async function refreshCidadeDias(db) {
+  const rows = await db.all("SELECT cidade, dias FROM rota_cidades ORDER BY cidade")
+  const next = {}
+  for (const row of rows) {
+    const dias = parseDias(row.dias)
+    if (dias.length === 0) continue
+    next[String(row.cidade || "").trim().toLowerCase()] = dias
+  }
+  cidadeDias = next
+}
+
+async function countCidadesNaRota(db, dia, exceptCidade = "") {
+  const rows = await db.all("SELECT cidade, dias FROM rota_cidades")
+  const except = String(exceptCidade || "").trim().toLowerCase()
+  let total = 0
+  for (const row of rows) {
+    const cidade = String(row.cidade || "").trim()
+    if (!cidade) continue
+    if (except && cidade.toLowerCase() === except) continue
+    if (parseDias(row.dias).includes(dia)) total += 1
+  }
+  return total
+}
+
+function parseDias(raw) {
+  try {
+    const value = typeof raw === "string" ? JSON.parse(raw) : raw
+    if (!Array.isArray(value)) return []
+    return value
+      .map((item) => Number(item))
+      .filter((item) => Number.isInteger(item) && item >= 0 && item <= 6)
+  } catch {
+    return []
+  }
+}
+
+function normalizeDias(input) {
+  const list = Array.isArray(input) ? input : []
+  const dias = [
+    ...new Set(
+      list
+        .map((item) => Number(item))
+        .filter((item) => Number.isInteger(item) && item >= 1 && item <= 5),
+    ),
+  ].sort((a, b) => a - b)
+  return dias
+}
+
+const ROTA_META = {
+  1: { titulo: "Rota 1", diaSemana: "Segunda-feira" },
+  2: { titulo: "Rota 2", diaSemana: "Terça-feira" },
+  3: { titulo: "Rota 3", diaSemana: "Quarta-feira" },
+  4: { titulo: "Rota 4", diaSemana: "Quinta-feira" },
+  5: { titulo: "Rota 5", diaSemana: "Sexta-feira" },
+}
+
+async function loadRotaMotoristas(db) {
+  const rows = await db.all(
+    `SELECT rota, motorista, motorista_nome, confirmada, confirmada_em
+     FROM rota_motoristas
+     ORDER BY rota`,
+  )
+  const byRota = new Map(
+    rows.map((row) => [
+      Number(row.rota),
+      {
+        motorista: String(row.motorista || "").trim(),
+        motoristaNome: String(row.motorista_nome || "").trim(),
+        confirmada: Number(row.confirmada) === 1,
+        confirmadaEm: String(row.confirmada_em || "").trim(),
+      },
+    ]),
+  )
+  return byRota
+}
+
+export async function listRoutes(db) {
+  await refreshCidadeDias(db)
+  const rows = await db.all("SELECT cidade, dias FROM rota_cidades ORDER BY cidade")
+  const cidades = rows
+    .map((row) => ({
+      cidade: String(row.cidade || "").trim(),
+      dias: parseDias(row.dias),
+    }))
+    .filter((item) => item.cidade && item.dias.length > 0)
+    .sort((a, b) => a.cidade.localeCompare(b.cidade, "pt-BR"))
+
+  const motoristas = await loadRotaMotoristas(db)
+  const rotas = [1, 2, 3, 4, 5].map((dia) => {
+    const motorista = motoristas.get(dia) ?? {
+      motorista: "",
+      motoristaNome: "",
+      confirmada: false,
+      confirmadaEm: "",
+    }
+    return {
+      id: `rota${dia}`,
+      titulo: ROTA_META[dia].titulo,
+      diaSemana: ROTA_META[dia].diaSemana,
+      dias: [dia],
+      cidades: cidades
+        .filter((item) => item.dias.includes(dia))
+        .map((item) => item.cidade)
+        .sort((a, b) => a.localeCompare(b, "pt-BR"))
+        .slice(0, MAX_CIDADES_POR_ROTA),
+      motorista: motorista.motorista,
+      motoristaNome: motorista.motoristaNome,
+      confirmada: motorista.confirmada,
+      confirmadaEm: motorista.confirmadaEm,
+    }
+  })
+
+  return { cidades, rotas }
+}
+
+export async function listRouteDrivers(db) {
+  const users = await db.all(
+    `SELECT nome, usuario, recebimento, estoque, armazem, coleta, expedicao
+     FROM users
+     ORDER BY rowid`,
+  )
+  return {
+    drivers: users
+      .filter((user) => {
+        const flags = areaFlags(user)
+        return flags.expedicao || isAdmin(user.usuario)
+      })
+      .map((user) => ({
+        nome: user.nome,
+        usuario: user.usuario,
+      })),
+  }
+}
+
+export async function setRouteDriver(db, input) {
+  const rota = Number(input.rota)
+  const motorista = text(input.motorista)
+  if (!Number.isInteger(rota) || rota < 1 || rota > 5) {
+    throw new ApiError("Informe uma rota válida.")
+  }
+  if (!motorista) throw new ApiError("Selecione o motorista.")
+
+  const user = await db.get(
+    "SELECT nome, usuario, expedicao FROM users WHERE lower(usuario) = lower(?)",
+    motorista,
+  )
+  if (!user) throw new ApiError("Motorista não encontrado.")
+  if (!isAdmin(user.usuario) && !enabled(user.expedicao)) {
+    throw new ApiError("O usuário precisa ter acesso à Expedição.")
+  }
+
+  await withTransaction(db, async (tx) => {
+    await tx.run(
+      `INSERT INTO rota_motoristas (rota, motorista, motorista_nome, confirmada, confirmada_em)
+       VALUES (?, ?, ?, 0, '')
+       ON CONFLICT(rota) DO UPDATE SET
+         motorista = excluded.motorista,
+         motorista_nome = excluded.motorista_nome,
+         confirmada = 0,
+         confirmada_em = ''`,
+      rota,
+      user.usuario,
+      user.nome,
+    )
+    await logEvent(
+      tx,
+      input,
+      `${eventActor(input)} definiu ${user.nome} (${user.usuario}) como motorista da ${ROTA_META[rota].titulo}.`,
+    )
+  })
+  return listRoutes(db)
+}
+
+export async function confirmRoute(db, input) {
+  const rota = Number(input.rota)
+  if (!Number.isInteger(rota) || rota < 1 || rota > 5) {
+    throw new ApiError("Informe uma rota válida.")
+  }
+
+  const row = await db.get(
+    "SELECT rota, motorista, motorista_nome FROM rota_motoristas WHERE rota = ?",
+    rota,
+  )
+  const motorista = text(row?.motorista)
+  if (!motorista) {
+    throw new ApiError("Selecione o motorista antes de confirmar a rota.")
+  }
+
+  const cidadesNaRota = await countCidadesNaRota(db, rota)
+  if (cidadesNaRota === 0) {
+    throw new ApiError("Adicione ao menos uma cidade antes de confirmar a rota.")
+  }
+
+  const agora = new Date().toISOString()
+  await withTransaction(db, async (tx) => {
+    await tx.run(
+      `UPDATE rota_motoristas
+       SET confirmada = 1, confirmada_em = ?
+       WHERE rota = ?`,
+      agora,
+      rota,
+    )
+    await logEvent(
+      tx,
+      input,
+      `${eventActor(input)} confirmou a ${ROTA_META[rota].titulo} para o motorista ${row.motorista_nome || motorista}.`,
+    )
+  })
+  return listRoutes(db)
+}
+
+export async function listMyRoutes(db, actor) {
+  const usuario = text(actor)
+  if (!usuario) throw new ApiError("Informe o usuário.")
+  const { rotas } = await listRoutes(db)
+  return {
+    rotas: rotas.filter(
+      (rota) =>
+        rota.confirmada &&
+        String(rota.motorista || "").toLowerCase() === usuario.toLowerCase(),
+    ),
+  }
+}
+
+async function boxesAtPosition(db, posicao, armazemCodigo) {
+  const position = text(posicao)
+  if (!position) throw new ApiError("Informe a posição.")
+  const warehouse = text(armazemCodigo)
+  const rows = await db.all(
+    `SELECT b.id, b.nota_fiscal, b.posicao, b.armazem_codigo, b.cidade, b.prazo, b.expedida
+     FROM boxes b
+     WHERE b.expedida = 0
+       AND b.posicao IS NOT NULL AND b.posicao != ''
+       AND lower(b.posicao) = lower(?)
+       AND b.nota_fiscal IS NOT NULL AND b.nota_fiscal != ''
+     ORDER BY b.nota_fiscal, b.id`,
+    position,
+  )
+  if (!warehouse) return rows
+  return rows.filter(
+    (box) =>
+      !box.armazem_codigo ||
+      String(box.armazem_codigo).toLowerCase() === warehouse.toLowerCase(),
+  )
+}
+
+export async function listPositionNotes(db, input) {
+  const posicao = text(input.posicao)
+  const armazemCodigo = text(input.armazemCodigo)
+  const rows = await boxesAtPosition(db, posicao, armazemCodigo)
+  const byNota = new Map()
+  for (const box of rows) {
+    const notaFiscal = String(box.nota_fiscal || "").trim()
+    if (!notaFiscal) continue
+    const key = normalizeNotaFiscal(notaFiscal) || notaFiscal.toLowerCase()
+    let group = byNota.get(key)
+    if (!group) {
+      group = {
+        notaFiscal,
+        quantidade: 0,
+        boxIds: [],
+        cidade: text(box.cidade) || "",
+        prazo: text(box.prazo) || "",
+      }
+      byNota.set(key, group)
+    }
+    group.quantidade += 1
+    group.boxIds.push(box.id)
+    if (!group.cidade && box.cidade) group.cidade = text(box.cidade)
+    if (!group.prazo && box.prazo) group.prazo = text(box.prazo)
+  }
+  return {
+    posicao,
+    armazemCodigo: armazemCodigo || null,
+    notas: [...byNota.values()],
+  }
+}
+
+export async function shipPositionBoxes(db, input) {
+  const posicao = text(input.posicao)
+  const armazemCodigo = text(input.armazemCodigo)
+  const rows = await boxesAtPosition(db, posicao, armazemCodigo)
+  if (rows.length === 0) {
+    throw new ApiError("Nenhuma nota fiscal pendente nesta posição.")
+  }
+  return withTransaction(db, async (tx) => {
+    const byNota = new Map()
+    for (const box of rows) {
+      const notaFiscal = String(box.nota_fiscal || "").trim()
+      if (!notaFiscal) continue
+      const key = normalizeNotaFiscal(notaFiscal) || notaFiscal.toLowerCase()
+      let group = byNota.get(key)
+      if (!group) {
+        group = { notaFiscal, ids: [] }
+        byNota.set(key, group)
+      }
+      group.ids.push(box.id)
+    }
+    const now = new Date().toISOString()
+    const actor = eventActor(input)
+    const allIds = []
+    const notasText = []
+    for (const group of byNota.values()) {
+      for (const id of group.ids) {
+        const eligible = await tx.get(
+          `SELECT id FROM boxes
+           WHERE id = ? AND expedida = 0
+             AND posicao IS NOT NULL AND posicao != ''
+             AND lower(posicao) = lower(?)`,
+          id,
+          posicao,
+        )
+        if (!eligible) throw new ApiError("Caixa não encontrada.")
+        await tx.run(
+          `UPDATE boxes
+           SET expedida = 1, coletada = 1, posicao = '', armazem_codigo = NULL,
+               nota_fiscal = ?, enviada_em = ?
+           WHERE id = ?`,
+          group.notaFiscal,
+          now,
+          id,
+        )
+        allIds.push(id)
+      }
+      await upsertNotaFiscal(tx, {
+        notaFiscal: group.notaFiscal,
+        posicao: "",
+        quantidade: group.ids.length,
+        actor,
+      })
+      notasText.push(
+        `${group.notaFiscal} (${group.ids.length} ${group.ids.length === 1 ? "caixa" : "caixas"})`,
+      )
+    }
+    const place = armazemCodigo ? `${posicao} do armazém ${armazemCodigo}` : posicao
+    await logEvent(
+      tx,
+      input,
+      `${actor} iniciou a rota e enviou as caixas ${boxIdsText(allIds)} da posição ${place}: ${notasText.join(", ")}.`,
+    )
+    return readState(tx)
+  })
+}
+
+export async function saveRouteCity(db, input) {
+  const cidade = text(input.cidade)
+  const dias = normalizeDias(input.dias)
+  if (!cidade) throw new ApiError("Informe a cidade.")
+  if (dias.length === 0) throw new ApiError("Informe ao menos uma rota.")
+
+  const existing = await db.get(
+    "SELECT cidade, dias FROM rota_cidades WHERE lower(cidade) = lower(?)",
+    cidade,
+  )
+  const diasAtuais = existing ? parseDias(existing.dias) : []
+
+  for (const dia of dias) {
+    if (diasAtuais.includes(dia)) continue
+    const total = await countCidadesNaRota(db, dia, cidade)
+    if (total >= MAX_CIDADES_POR_ROTA) {
+      throw new ApiError(
+        `${ROTA_META[dia].titulo} já tem ${MAX_CIDADES_POR_ROTA} cidades.`,
+      )
+    }
+  }
+
+  await withTransaction(db, async (tx) => {
+    if (existing) {
+      await tx.run(
+        "UPDATE rota_cidades SET cidade = ?, dias = ? WHERE lower(cidade) = lower(?)",
+        cidade,
+        JSON.stringify(dias),
+        cidade,
+      )
+    } else {
+      await tx.run(
+        "INSERT INTO rota_cidades (cidade, dias) VALUES (?, ?)",
+        cidade,
+        JSON.stringify(dias),
+      )
+    }
+    await logEvent(
+      tx,
+      input,
+      `${eventActor(input)} definiu ${cidade} nas rotas ${dias.map((d) => ROTA_META[d].titulo).join(", ")}.`,
+    )
+  })
+  return listRoutes(db)
+}
+
+export async function removeRouteCityDay(db, input) {
+  const cidade = text(input.cidade)
+  const dia = Number(input.dia)
+  if (!cidade) throw new ApiError("Informe a cidade.")
+  if (!Number.isInteger(dia) || dia < 1 || dia > 5) {
+    throw new ApiError("Informe uma rota válida.")
+  }
+  await withTransaction(db, async (tx) => {
+    const row = await tx.get(
+      "SELECT cidade, dias FROM rota_cidades WHERE lower(cidade) = lower(?)",
+      cidade,
+    )
+    if (!row) throw new ApiError("Cidade não encontrada na rota.")
+    const dias = parseDias(row.dias).filter((item) => item !== dia)
+    if (dias.length === 0) {
+      await tx.run("DELETE FROM rota_cidades WHERE lower(cidade) = lower(?)", cidade)
+    } else {
+      await tx.run(
+        "UPDATE rota_cidades SET dias = ? WHERE lower(cidade) = lower(?)",
+        JSON.stringify(dias),
+        cidade,
+      )
+    }
+    await logEvent(
+      tx,
+      input,
+      `${eventActor(input)} removeu ${row.cidade} da ${ROTA_META[dia].titulo}.`,
+    )
+  })
+  return listRoutes(db)
 }
 
 function isoDay(date) {
@@ -1295,7 +1898,7 @@ export async function lookupNotaFiscal(db, input) {
   const normalizedTerm = normalizeNotaFiscal(term)
 
   const allNotas = await db.all(
-    `SELECT nota_fiscal, posicao, quantidade, criado_em, actor
+    `SELECT nota_fiscal, posicao, quantidade, criado_em, actor, observacao_retorno
      FROM notas_fiscais
      ORDER BY criado_em DESC`,
   )
@@ -1370,12 +1973,15 @@ export async function lookupNotaFiscal(db, input) {
   const currentPosicao =
     allShipped || !notaRow?.posicao ? null : notaRow.posicao
 
+  const observacaoRetorno = text(notaRow?.observacao_retorno) || null
+
   return {
     notaFiscal: resolvedNota,
     posicao: currentPosicao,
     quantidade: notaRow?.quantidade ?? boxes.length,
     expedidaPor: notaRow?.actor || historyHit?.actor || null,
     expedidaEm: notaRow?.criado_em || historyHit?.criado_em || null,
+    observacaoRetorno,
     items: boxes.map((box) => {
       const placeEvent = events.find(
         (event) =>

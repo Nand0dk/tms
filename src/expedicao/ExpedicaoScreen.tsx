@@ -1,12 +1,13 @@
-import { useState, type FormEvent } from "react"
-import { lookupNotaFiscal, type NotaFiscalLookup } from "../data/api"
+import { useEffect, useState, type FormEvent } from "react"
+import { loadRoutes, lookupNotaFiscal, type NotaFiscalLookup } from "../data/api"
 import { BackButton } from "../recebimento/BackButton"
 import { Field } from "../recebimento/Field"
 import { positionFromSearch } from "../recebimento/format"
 import { ShelfReader } from "../recebimento/ShelfReader"
 import type { Box, Product } from "../recebimento/types"
+import { DefinirRotaScreen } from "./DefinirRotaScreen"
 import { MetricasScreen } from "./MetricasScreen"
-import { CIDADES, formatPrazo, prazoDeEnvio, prazoEfetivo, rotaDaCidade } from "./rotas"
+import { applyRoutes, CIDADES, formatPrazo, prazoDeEnvio, prazoEfetivo, rotaDaCidade } from "./rotas"
 import { RotasScreen } from "./RotasScreen"
 
 const DIAS_SEMANA = [
@@ -36,18 +37,23 @@ type ExpedicaoView =
   | "alocar"
   | "realocar"
   | "expedir"
+  | "retorno"
   | "buscar"
   | "metricas"
   | "cidades"
+  | "definir-rota"
 
 export function ExpedicaoScreen({
   products,
+  actor,
   onAllocate,
   onReallocate,
   onShip,
+  onReturn,
   onBack,
 }: {
   products: Product[]
+  actor: string
   onAllocate: (
     notaFiscal: string,
     quantidade: number,
@@ -66,11 +72,30 @@ export function ExpedicaoScreen({
     quantidade: number,
     posicao?: string,
   ) => void | Promise<void>
+  onReturn: (
+    notaFiscal: string,
+    cidade?: string,
+    observacao?: string,
+  ) => void | Promise<void>
   onBack: () => void
 }) {
   const [view, setView] = useState<ExpedicaoView>("menu")
   const [draft, setDraft] = useState<ExpeditionDraft | null>(null)
   const [notaLookup, setNotaLookup] = useState<NotaFiscalLookup | null>(null)
+
+  useEffect(() => {
+    let cancelled = false
+    loadRoutes()
+      .then((data) => {
+        if (!cancelled) applyRoutes(data.cidades)
+      })
+      .catch(() => {
+        // Mantém rotas locais se a API falhar.
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [])
 
   if (notaLookup) {
     return (
@@ -134,6 +159,17 @@ export function ExpedicaoScreen({
     )
   }
 
+  if (view === "retorno") {
+    return (
+      <RetornoForm
+        products={products}
+        onBack={() => setView("menu")}
+        onReturn={onReturn}
+        onDone={() => setView("menu")}
+      />
+    )
+  }
+
   if (view === "metricas") {
     return (
       <MetricasScreen products={products} onBack={() => setView("menu")} />
@@ -144,6 +180,12 @@ export function ExpedicaoScreen({
     return <RotasScreen onBack={() => setView("menu")} />
   }
 
+  if (view === "definir-rota") {
+    return (
+      <DefinirRotaScreen actor={actor} onBack={() => setView("menu")} />
+    )
+  }
+
   return (
     <ExpedicaoMenu
       products={products}
@@ -151,9 +193,11 @@ export function ExpedicaoScreen({
       onAlocar={() => setView("alocar")}
       onRealocar={() => setView("realocar")}
       onExpedir={() => setView("expedir")}
+      onRetorno={() => setView("retorno")}
       onBuscar={() => setView("buscar")}
       onMetricas={() => setView("metricas")}
       onCidades={() => setView("cidades")}
+      onDefinirRota={() => setView("definir-rota")}
     />
   )
 }
@@ -164,18 +208,22 @@ function ExpedicaoMenu({
   onAlocar,
   onRealocar,
   onExpedir,
+  onRetorno,
   onBuscar,
   onMetricas,
   onCidades,
+  onDefinirRota,
 }: {
   products: Product[]
   onBack: () => void
   onAlocar: () => void
   onRealocar: () => void
   onExpedir: () => void
+  onRetorno: () => void
   onBuscar: () => void
   onMetricas: () => void
   onCidades: () => void
+  onDefinirRota: () => void
 }) {
   const shipped = shippedBoxes(products)
 
@@ -187,7 +235,7 @@ function ExpedicaoMenu({
       <div className="min-h-0 flex-1 overflow-y-auto px-1 pb-[max(2rem,env(safe-area-inset-bottom))]">
         <h1 className="screen-title">Expedição</h1>
         <p className="mt-1 text-sm text-neutral-600 lg:text-base">
-          Alocar, realocar, enviar ou consultar uma nota fiscal.
+          Alocar, realocar, enviar, retornar ou consultar uma nota fiscal.
         </p>
         <div className="mt-5 grid grid-cols-1 gap-3 sm:grid-cols-2 sm:gap-4 lg:mt-6 lg:grid-cols-3 lg:gap-4 xl:gap-5">
           <button
@@ -213,6 +261,13 @@ function ExpedicaoMenu({
           </button>
           <button
             type="button"
+            onClick={onRetorno}
+            className="w-full rounded-xl border border-[#1f6b28] px-3 py-3 text-sm font-medium text-[#1f6b28] lg:px-4 lg:py-4 lg:text-base"
+          >
+            Retorno
+          </button>
+          <button
+            type="button"
             onClick={onBuscar}
             className="w-full rounded-xl border border-neutral-300 bg-white px-3 py-3 text-sm font-medium text-neutral-800 lg:px-4 lg:py-4 lg:text-base"
           >
@@ -228,9 +283,16 @@ function ExpedicaoMenu({
           <button
             type="button"
             onClick={onCidades}
-            className="w-full rounded-xl border border-neutral-300 bg-white px-3 py-3 text-sm font-medium text-neutral-800 sm:col-span-2 lg:col-span-1 lg:px-4 lg:py-4 lg:text-base"
+            className="w-full rounded-xl border border-neutral-300 bg-white px-3 py-3 text-sm font-medium text-neutral-800 lg:px-4 lg:py-4 lg:text-base"
           >
             Cidades
+          </button>
+          <button
+            type="button"
+            onClick={onDefinirRota}
+            className="w-full rounded-xl border border-neutral-300 bg-white px-3 py-3 text-sm font-medium text-neutral-800 sm:col-span-2 lg:col-span-1 lg:px-4 lg:py-4 lg:text-base"
+          >
+            Definir rotas
           </button>
         </div>
         <div className="mt-8">
@@ -565,6 +627,195 @@ function RealocarForm({
   )
 }
 
+function RetornoForm({
+  products,
+  onBack,
+  onReturn,
+  onDone,
+}: {
+  products: Product[]
+  onBack: () => void
+  onReturn: (
+    notaFiscal: string,
+    cidade?: string,
+    observacao?: string,
+  ) => void | Promise<void>
+  onDone: () => void
+}) {
+  const [notaFiscal, setNotaFiscal] = useState("")
+  const [cidade, setCidade] = useState("")
+  const [cidadeOutra, setCidadeOutra] = useState("")
+  const [observacao, setObservacao] = useState("")
+  const [error, setError] = useState<string | null>(null)
+  const [saving, setSaving] = useState(false)
+  const [saved, setSaved] = useState<string | null>(null)
+
+  const invoice = notaFiscal.trim()
+  const motivo = observacao.trim()
+  const cidadeDetectada = cidadeDaNotaEnviada(products, invoice)
+  const precisaCidade = Boolean(invoice) && !cidadeDetectada
+  const destino = cidadeOutra.trim() || cidade.trim() || cidadeDetectada
+
+  async function handleSubmit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault()
+    if (saved) {
+      onDone()
+      return
+    }
+    if (!invoice) {
+      setError("Informe a nota fiscal.")
+      return
+    }
+    if (!motivo) {
+      setError("Informe o motivo do retorno.")
+      return
+    }
+    if (!destino) {
+      setError("Informe a cidade da rota para reagendar o prazo.")
+      return
+    }
+    setSaving(true)
+    setError(null)
+    try {
+      await onReturn(invoice, destino, motivo)
+      const prazo = prazoDeEnvio(destino)
+      const rota = rotaDaCidade(destino)
+      const quando = rota ? rota.titulo : "em até 7 dias"
+      setSaved(
+        `NF ${invoice} retornou ao sistema · ${destino} · envio ${formatPrazo(prazo)} (${quando}).`,
+      )
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : "Não foi possível retornar.")
+    }
+    setSaving(false)
+  }
+
+  return (
+    <form
+      className="flex min-h-0 w-full min-w-0 flex-1 flex-col"
+      onSubmit={(event) => void handleSubmit(event)}
+      noValidate
+    >
+      <header className="flex items-center px-1 pt-4 pb-2">
+        <BackButton onClick={saved ? onDone : onBack} />
+      </header>
+      <div className="min-h-0 flex-1 overflow-y-auto px-1 pb-[max(2rem,env(safe-area-inset-bottom))]">
+        <h1 className="screen-title">Retorno</h1>
+        <p className="mt-1 text-sm text-neutral-600">
+          Informe a nota fiscal enviada para desfazer o envio e reagendar o
+          prazo na próxima rota da cidade.
+        </p>
+        <div className="mt-4 flex flex-col gap-3">
+          <Field
+            id="retorno-nota-fiscal"
+            label="Nota fiscal"
+            value={notaFiscal}
+            placeholder="Número da NF"
+            onChange={(value) => {
+              setNotaFiscal(value)
+              setSaved(null)
+              setError(null)
+            }}
+          />
+          {cidadeDetectada && !precisaCidade ? (
+            <p className="rounded-xl bg-white px-3 py-2.5 text-sm text-neutral-700 shadow-sm ring-1 ring-black/5">
+              Cidade da NF: <span className="font-semibold">{cidadeDetectada}</span>
+              {rotaDaCidade(cidadeDetectada)
+                ? ` · ${rotaDaCidade(cidadeDetectada)!.titulo}`
+                : " · prazo em até 7 dias"}
+            </p>
+          ) : null}
+          {precisaCidade ? (
+            <>
+              <div className="flex flex-col gap-1">
+                <label
+                  htmlFor="retorno-cidade"
+                  className="text-sm font-medium text-neutral-800"
+                >
+                  Cidade
+                </label>
+                <select
+                  id="retorno-cidade"
+                  value={cidade}
+                  onChange={(event) => {
+                    setCidade(event.target.value)
+                    setCidadeOutra("")
+                    setSaved(null)
+                    setError(null)
+                  }}
+                  className="rounded-xl border border-neutral-300 bg-white px-3 py-2.5 text-base outline-none focus:border-[#2e7d32] focus:ring-2 focus:ring-[#2e7d32]/20 md:py-2 md:text-sm"
+                >
+                  <option value="">Selecione a cidade</option>
+                  <option value="Transportadora">Transportadora · 7 dias</option>
+                  {CIDADES.map((item) => (
+                    <option key={item.cidade} value={item.cidade}>
+                      {item.cidade} · {item.titulo}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              <Field
+                id="retorno-cidade-digitada"
+                label="Ou digite a cidade"
+                value={cidadeOutra}
+                placeholder="Nome da cidade"
+                onChange={(value) => {
+                  setCidadeOutra(value)
+                  setSaved(null)
+                  setError(null)
+                }}
+              />
+            </>
+          ) : null}
+          {destino ? (
+            <p className="-mt-1 text-xs text-neutral-500">{prazoHint(destino, "")}</p>
+          ) : null}
+          <div className="flex flex-col gap-1">
+            <label
+              htmlFor="retorno-observacao"
+              className="text-sm font-medium text-neutral-800"
+            >
+              Observação
+            </label>
+            <textarea
+              id="retorno-observacao"
+              name="retorno-observacao"
+              value={observacao}
+              placeholder="Motivo do retorno"
+              rows={3}
+              onChange={(event) => {
+                setObservacao(event.target.value)
+                setSaved(null)
+                setError(null)
+              }}
+              className="resize-y rounded-xl border border-neutral-300 bg-white px-3 py-2.5 text-base outline-none placeholder:text-neutral-400 focus:border-[#2e7d32] focus:ring-2 focus:ring-[#2e7d32]/20 md:py-2 md:text-sm"
+            />
+          </div>
+        </div>
+        {error ? (
+          <p role="alert" className="mt-3 text-sm text-red-700">
+            {error}
+          </p>
+        ) : null}
+        {saved ? <p className="mt-3 text-sm text-[#1f6b28]">{saved}</p> : null}
+        <div className="mt-5">
+          <button
+            type="submit"
+            disabled={saving}
+            className="w-full rounded-xl bg-[#1f6b28] px-3 py-2.5 text-sm font-semibold text-white disabled:opacity-60"
+          >
+            {saved
+              ? "Voltar à expedição"
+              : saving
+                ? "Salvando…"
+                : "Confirmar retorno"}
+          </button>
+        </div>
+      </div>
+    </form>
+  )
+}
+
 function AlocarForm({
   onBack,
   onAllocate,
@@ -870,6 +1121,14 @@ export function NotaFiscalHistorico({
           ) : null}
           <p className="mt-2 text-sm text-neutral-600">Quantidade</p>
           <p className="text-sm font-semibold">{data.quantidade}</p>
+          {data.observacaoRetorno ? (
+            <>
+              <p className="mt-2 text-sm text-neutral-600">Motivo do retorno</p>
+              <p className="text-sm font-semibold whitespace-pre-wrap">
+                {data.observacaoRetorno}
+              </p>
+            </>
+          ) : null}
           {data.expedidaPor ? (
             <p className="mt-2 text-sm text-neutral-700">
               Registrada por {data.expedidaPor}
@@ -1191,4 +1450,29 @@ function shippedBoxes(products: Product[]) {
         })),
     ),
   )
+}
+
+function cidadeDaNotaEnviada(products: Product[], notaFiscal: string) {
+  const wanted = notaFiscal.trim().toLowerCase()
+  if (!wanted) return ""
+  const normalized = wanted.replace(/[\s.\-\/_]/g, "")
+  for (const product of products) {
+    for (const lot of product.lots) {
+      for (const box of lot.boxes) {
+        if (!box.expedida) continue
+        const nf = (box.notaFiscal ?? "").trim().toLowerCase()
+        if (!nf) continue
+        const match =
+          nf === wanted ||
+          nf.includes(wanted) ||
+          (Boolean(normalized) &&
+            (nf.replace(/[\s.\-\/_]/g, "") === normalized ||
+              nf.replace(/[\s.\-\/_]/g, "").includes(normalized)))
+        if (!match) continue
+        const cidade = (box.cidade ?? "").trim()
+        if (cidade) return cidade
+      }
+    }
+  }
+  return ""
 }

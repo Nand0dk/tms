@@ -5,6 +5,8 @@ import { ColetaScreen } from "../coleta/ColetaScreen"
 import {
   loadData,
   loadHistory,
+  loadMyRoutes,
+  loadPositionNotes,
   lookupNotaFiscal,
   removeLot,
   removePosition,
@@ -17,14 +19,20 @@ import {
   savePositions,
   saveProduct,
   saveReallocation,
+  saveReturn,
   saveShelf,
   saveShelfPositions,
   saveShipment,
   saveWarehouse,
+  shipPosition,
   type AppData,
   type HistoryEvent,
   type NotaFiscalLookup,
+  type PositionNote,
+  type RouteInfo,
 } from "../data/api"
+import { positionFromSearch } from "../recebimento/format"
+import { ShelfReader } from "../recebimento/ShelfReader"
 import { ExpedicaoScreen, NotaFiscalHistorico } from "../expedicao/ExpedicaoScreen"
 import { formatPrazo, prazoEfetivo } from "../expedicao/rotas"
 import { EstoqueScreen } from "../estoque/EstoqueScreen"
@@ -33,6 +41,7 @@ import type { LotDraft, Product, Warehouse } from "../recebimento/types"
 import type { AreaAccess } from "../data/api"
 import { useSession } from "../session"
 import { HistoricoScreen } from "../historico/HistoricoScreen"
+import { BackButton } from "../recebimento/BackButton"
 import { Logo } from "./Logo"
 import { UsuariosScreen } from "../usuarios/UsuariosScreen"
 
@@ -43,6 +52,7 @@ type Screen =
   | "armazem"
   | "coleta"
   | "expedicao"
+  | "rota"
   | "usuarios"
   | "historico"
 
@@ -185,6 +195,10 @@ export function PhoneHome() {
     return saveShipment(actor, boxIds, notaFiscal, quantidade, posicao).then(apply)
   }
 
+  function returnBoxes(notaFiscal: string, cidade?: string, observacao?: string) {
+    return saveReturn(actor, notaFiscal, cidade, observacao).then(apply)
+  }
+
   function deleteProduct(codigo: string) {
     return removeProduct(actor, codigo).then(apply)
   }
@@ -315,8 +329,15 @@ export function PhoneHome() {
             onOpenArmazem={() => openArea("armazem")}
             onOpenColeta={() => openArea("coleta")}
             onOpenExpedicao={() => openArea("expedicao")}
+            onOpenRota={() => openArea("rota")}
             onOpenUsuarios={() => openArea("usuarios")}
             onOpenHistorico={() => openArea("historico")}
+          />
+        ) : screen === "rota" ? (
+          <MinhaRotaScreen
+            actor={actor}
+            onBack={goHome}
+            onShipped={apply}
           />
         ) : screen === "recebimento" ? (
           <RecebimentoScreen
@@ -359,9 +380,11 @@ export function PhoneHome() {
         ) : screen === "expedicao" ? (
           <ExpedicaoScreen
             products={products}
+            actor={actor}
             onAllocate={allocateBoxes}
             onReallocate={reallocateBoxes}
             onShip={shipBoxes}
+            onReturn={returnBoxes}
             onBack={goHome}
           />
         ) : screen === "historico" ? (
@@ -392,6 +415,7 @@ function HomeScreen({
   onOpenArmazem,
   onOpenColeta,
   onOpenExpedicao,
+  onOpenRota,
   onOpenUsuarios,
   onOpenHistorico,
   admin,
@@ -403,6 +427,7 @@ function HomeScreen({
   onOpenArmazem: () => void
   onOpenColeta: () => void
   onOpenExpedicao: () => void
+  onOpenRota: () => void
   onOpenUsuarios: () => void
   onOpenHistorico: () => void
 }) {
@@ -431,6 +456,12 @@ function HomeScreen({
           onClick: onOpenExpedicao,
         }
       : null,
+    {
+      title: "Rota",
+      description: "Sua rota confirmada",
+      icon: <RotaIcon />,
+      onClick: onOpenRota,
+    },
     areas?.recebimento
       ? {
           title: "Recebimento",
@@ -503,9 +534,358 @@ function HomeScreen({
 
 function canOpen(areas: AreaAccess | null, screen: Screen, admin: boolean) {
   if (screen === "home") return true
+  if (screen === "rota") return true
   if (screen === "historico") return admin
   if (!areas) return false
   return areas[screen]
+}
+
+function MinhaRotaScreen({
+  actor,
+  onBack,
+  onShipped,
+}: {
+  actor: string
+  onBack: () => void
+  onShipped: (data: AppData) => void
+}) {
+  const [rotas, setRotas] = useState<RouteInfo[]>([])
+  const [loading, setLoading] = useState(true)
+  const [selected, setSelected] = useState<RouteInfo | null>(null)
+  const [step, setStep] = useState<"list" | "detail" | "scan" | "confirm">("list")
+  const [posicao, setPosicao] = useState("")
+  const [armazemCodigo, setArmazemCodigo] = useState<string | undefined>()
+  const [notas, setNotas] = useState<PositionNote[]>([])
+  const [error, setError] = useState<string | null>(null)
+  const [busy, setBusy] = useState(false)
+  const [saved, setSaved] = useState<string | null>(null)
+
+  useEffect(() => {
+    if (!actor) {
+      setRotas([])
+      setLoading(false)
+      return
+    }
+    let cancelled = false
+    setLoading(true)
+    loadMyRoutes(actor)
+      .then((data) => {
+        if (!cancelled) setRotas(data.rotas)
+      })
+      .catch(() => {
+        if (!cancelled) setRotas([])
+      })
+      .finally(() => {
+        if (!cancelled) setLoading(false)
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [actor])
+
+  function openRota(rota: RouteInfo) {
+    setSelected(rota)
+    setStep("detail")
+    setPosicao("")
+    setArmazemCodigo(undefined)
+    setNotas([])
+    setError(null)
+    setSaved(null)
+  }
+
+  function backFromFlow() {
+    if (step === "confirm" && !saved) {
+      setStep("scan")
+      setNotas([])
+      setError(null)
+      return
+    }
+    if (step === "scan" || step === "confirm") {
+      setStep("detail")
+      setPosicao("")
+      setArmazemCodigo(undefined)
+      setNotas([])
+      setError(null)
+      setSaved(null)
+      return
+    }
+    if (step === "detail") {
+      setSelected(null)
+      setStep("list")
+      setError(null)
+      setSaved(null)
+      return
+    }
+    onBack()
+  }
+
+  async function handlePositionRead(code: string) {
+    const parsed = positionFromSearch(code.trim())
+    const position = parsed?.codigo || code.trim()
+    if (!position) {
+      setError("Posição inválida. Leia o QR da prateleira/posição.")
+      return
+    }
+    setBusy(true)
+    setError(null)
+    try {
+      const data = await loadPositionNotes(position, parsed?.armazem)
+      setPosicao(data.posicao)
+      setArmazemCodigo(data.armazemCodigo || parsed?.armazem || undefined)
+      setNotas(data.notas)
+      if (data.notas.length === 0) {
+        setError("Nenhuma nota fiscal pendente nesta posição.")
+        setStep("scan")
+      } else {
+        setStep("confirm")
+      }
+    } catch (caught) {
+      setError(
+        caught instanceof Error
+          ? caught.message
+          : "Não foi possível carregar as notas desta posição.",
+      )
+    }
+    setBusy(false)
+  }
+
+  async function confirmShip() {
+    if (!posicao) {
+      setError("Posição não definida.")
+      return
+    }
+    if (notas.length === 0) {
+      setError("Nenhuma nota fiscal para enviar.")
+      return
+    }
+    setBusy(true)
+    setError(null)
+    try {
+      const state = await shipPosition(actor, posicao, armazemCodigo)
+      onShipped(state)
+      const total = notas.reduce((sum, nota) => sum + nota.quantidade, 0)
+      setSaved(
+        notas.length === 1
+          ? `1 nota enviada (${total} ${total === 1 ? "caixa" : "caixas"}) da posição ${posicao}.`
+          : `${notas.length} notas enviadas (${total} caixas) da posição ${posicao}.`,
+      )
+    } catch (caught) {
+      setError(
+        caught instanceof Error
+          ? caught.message
+          : "Não foi possível confirmar o envio.",
+      )
+    }
+    setBusy(false)
+  }
+
+  if (step === "scan" && selected) {
+    return (
+      <div className="flex min-h-0 w-full min-w-0 flex-1 flex-col">
+        <header className="flex items-center px-1 pt-4 pb-2">
+          <BackButton onClick={backFromFlow} />
+        </header>
+        <div className="min-h-0 flex-1 overflow-y-auto px-1 pb-[max(2rem,env(safe-area-inset-bottom))]">
+          <h1 className="screen-title">Iniciar a rota</h1>
+          <p className="mt-1 text-sm text-neutral-600">
+            Leia o QR code da posição para listar as notas fiscais.
+          </p>
+          <p className="mt-2 text-sm font-medium text-neutral-800">
+            {selected.titulo} · {selected.diaSemana}
+          </p>
+          <div className="mt-4">
+            <ShelfReader
+              label="Ler QR da posição"
+              onRead={(code) => {
+                void handlePositionRead(code)
+              }}
+            />
+          </div>
+          {busy ? (
+            <p className="mt-3 text-sm text-neutral-500">Buscando notas…</p>
+          ) : null}
+          {error ? (
+            <p role="alert" className="mt-3 text-sm text-red-700">
+              {error}
+            </p>
+          ) : null}
+        </div>
+      </div>
+    )
+  }
+
+  if (step === "confirm" && selected) {
+    return (
+      <div className="flex min-h-0 w-full min-w-0 flex-1 flex-col">
+        <header className="flex items-center px-1 pt-4 pb-2">
+          <BackButton onClick={saved ? () => {
+            setStep("detail")
+            setPosicao("")
+            setArmazemCodigo(undefined)
+            setNotas([])
+            setError(null)
+            setSaved(null)
+          } : backFromFlow} />
+        </header>
+        <div className="min-h-0 flex-1 overflow-y-auto px-1 pb-[max(2rem,env(safe-area-inset-bottom))]">
+          <h1 className="screen-title">Notas na posição</h1>
+          <p className="mt-1 text-sm text-neutral-600">
+            Posição <span className="font-semibold text-neutral-800">{posicao}</span>
+            {armazemCodigo ? ` · armazém ${armazemCodigo}` : ""}. Confirme o envio.
+          </p>
+          {notas.length === 0 ? (
+            <p className="mt-6 rounded-2xl border border-dashed border-neutral-300 bg-white px-4 py-8 text-center text-sm text-neutral-500">
+              Nenhuma nota fiscal nesta posição.
+            </p>
+          ) : (
+            <ul className="sheet-vps mt-4 divide-y divide-neutral-100">
+              {notas.map((nota) => (
+                <li key={nota.notaFiscal} className="px-4 py-3.5">
+                  <p className="text-base font-semibold text-neutral-900">
+                    NF {nota.notaFiscal}
+                  </p>
+                  <p className="mt-1 text-sm text-neutral-700">
+                    {nota.quantidade}{" "}
+                    {nota.quantidade === 1 ? "caixa" : "caixas"}
+                    {nota.cidade ? ` · ${nota.cidade}` : ""}
+                    {nota.prazo ? ` · prazo ${formatPrazo(nota.prazo)}` : ""}
+                  </p>
+                </li>
+              ))}
+            </ul>
+          )}
+          {error ? (
+            <p role="alert" className="mt-3 text-sm text-red-700">
+              {error}
+            </p>
+          ) : null}
+          {saved ? (
+            <p className="mt-3 text-sm text-[#1f6b28]">{saved}</p>
+          ) : null}
+          <div className="mt-5">
+            <button
+              type="button"
+              disabled={busy || Boolean(saved) || notas.length === 0}
+              onClick={() => void confirmShip()}
+              className="w-full rounded-xl bg-[#1f6b28] px-3 py-2.5 text-sm font-semibold text-white disabled:opacity-60"
+            >
+              {saved ? "Enviado" : busy ? "Confirmando…" : "Confirmar"}
+            </button>
+          </div>
+          {saved ? (
+            <button
+              type="button"
+              onClick={() => {
+                setStep("scan")
+                setPosicao("")
+                setArmazemCodigo(undefined)
+                setNotas([])
+                setError(null)
+                setSaved(null)
+              }}
+              className="mt-3 w-full rounded-xl border border-[#1f6b28] px-3 py-2.5 text-sm font-medium text-[#1f6b28]"
+            >
+              Ler outra posição
+            </button>
+          ) : null}
+        </div>
+      </div>
+    )
+  }
+
+  if (step === "detail" && selected) {
+    return (
+      <div className="flex min-h-0 w-full min-w-0 flex-1 flex-col">
+        <header className="flex items-center px-1 pt-4 pb-2">
+          <BackButton onClick={backFromFlow} />
+        </header>
+        <div className="min-h-0 flex-1 overflow-y-auto px-1 pb-[max(2rem,env(safe-area-inset-bottom))]">
+          <h1 className="screen-title">{selected.titulo}</h1>
+          <p className="mt-1 text-sm text-neutral-600">{selected.diaSemana}</p>
+          <div className="mt-4 rounded-2xl bg-white px-4 py-3.5 shadow-sm ring-1 ring-black/5">
+            <div className="flex items-center justify-between gap-2">
+              <p className="text-sm font-medium text-neutral-500">Status</p>
+              <span className="rounded-full bg-[#1f6b28] px-2 py-0.5 text-[11px] font-medium text-white">
+                Confirmada
+              </span>
+            </div>
+            <p className="mt-3 text-sm text-neutral-500">Cidades</p>
+            <p className="mt-0.5 text-sm font-semibold text-neutral-900">
+              {selected.cidades.length > 0
+                ? selected.cidades.join(" · ")
+                : "Sem cidades"}
+            </p>
+          </div>
+          <div className="mt-5">
+            <button
+              type="button"
+              onClick={() => {
+                setStep("scan")
+                setPosicao("")
+                setArmazemCodigo(undefined)
+                setNotas([])
+                setError(null)
+                setSaved(null)
+              }}
+              className="w-full rounded-xl bg-[#1f6b28] px-3 py-2.5 text-sm font-semibold text-white"
+            >
+              Iniciar a rota
+            </button>
+          </div>
+        </div>
+      </div>
+    )
+  }
+
+  return (
+    <div className="flex min-h-0 w-full min-w-0 flex-1 flex-col">
+      <header className="flex items-center px-1 pt-4 pb-2">
+        <BackButton onClick={onBack} />
+      </header>
+      <div className="min-h-0 flex-1 overflow-y-auto px-1 pb-[max(2rem,env(safe-area-inset-bottom))]">
+        <h1 className="screen-title">Rota</h1>
+        <p className="mt-1 text-sm text-neutral-600">
+          Rotas confirmadas para este motorista. Toque para iniciar.
+        </p>
+        {loading ? (
+          <p className="mt-6 text-sm text-neutral-500">Carregando…</p>
+        ) : rotas.length === 0 ? (
+          <p className="mt-6 rounded-2xl border border-dashed border-neutral-300 bg-white px-4 py-8 text-center text-sm text-neutral-500">
+            Nenhuma rota atribuída.
+          </p>
+        ) : (
+          <ul className="sheet-vps mt-4 divide-y divide-neutral-100">
+            {rotas.map((rota) => (
+              <li key={rota.id}>
+                <button
+                  type="button"
+                  onClick={() => openRota(rota)}
+                  className="flex w-full flex-col px-4 py-3.5 text-left transition hover:bg-neutral-50"
+                >
+                  <span className="flex items-center justify-between gap-2">
+                    <span className="text-base font-semibold text-neutral-900">
+                      {rota.titulo}
+                    </span>
+                    <span className="rounded-full bg-[#1f6b28] px-2 py-0.5 text-[11px] font-medium text-white">
+                      Confirmada
+                    </span>
+                  </span>
+                  <span className="mt-0.5 text-xs text-neutral-500">
+                    {rota.diaSemana}
+                  </span>
+                  <span className="mt-2 text-sm text-neutral-700">
+                    {rota.cidades.length > 0
+                      ? rota.cidades.join(" · ")
+                      : "Sem cidades"}
+                  </span>
+                </button>
+              </li>
+            ))}
+          </ul>
+        )}
+      </div>
+    </div>
+  )
 }
 
 function HistoricoIcon() {
@@ -792,6 +1172,32 @@ function MaisScreen({
   onOpenRecebimento: () => void
   onOpenColeta: () => void
 }) {
+  const [minhasRotas, setMinhasRotas] = useState<RouteInfo[]>([])
+  const [rotasLoading, setRotasLoading] = useState(Boolean(username))
+
+  useEffect(() => {
+    if (!username) {
+      setMinhasRotas([])
+      setRotasLoading(false)
+      return
+    }
+    let cancelled = false
+    setRotasLoading(true)
+    loadMyRoutes(username)
+      .then((data) => {
+        if (!cancelled) setMinhasRotas(data.rotas)
+      })
+      .catch(() => {
+        if (!cancelled) setMinhasRotas([])
+      })
+      .finally(() => {
+        if (!cancelled) setRotasLoading(false)
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [username])
+
   const extras = [
     areas?.recebimento
       ? {
@@ -832,6 +1238,41 @@ function MaisScreen({
       <p className="text-sm text-neutral-500">
         Conta {username ? `· ${username}` : ""} · {company.name}
       </p>
+
+      <section className="sheet-vps mt-4 px-4 py-3">
+        <h2 className="text-sm font-semibold text-neutral-900">Minhas rotas</h2>
+        <p className="mt-0.5 text-xs text-neutral-500">
+          Rotas confirmadas para este motorista.
+        </p>
+        {rotasLoading ? (
+          <p className="mt-3 text-sm text-neutral-500">Carregando…</p>
+        ) : minhasRotas.length === 0 ? (
+          <p className="mt-3 text-sm text-neutral-500">
+            Nenhuma rota confirmada ainda.
+          </p>
+        ) : (
+          <ul className="mt-3 flex flex-col gap-2">
+            {minhasRotas.map((rota) => (
+              <li
+                key={rota.id}
+                className="rounded-xl border border-neutral-100 bg-neutral-50 px-3 py-2.5"
+              >
+                <div className="flex items-center justify-between gap-2">
+                  <p className="text-sm font-semibold text-neutral-900">{rota.titulo}</p>
+                  <span className="text-[11px] font-medium text-[#1f6b28]">Confirmada</span>
+                </div>
+                <p className="mt-0.5 text-xs text-neutral-500">{rota.diaSemana}</p>
+                <p className="mt-1.5 text-sm text-neutral-700">
+                  {rota.cidades.length > 0
+                    ? rota.cidades.join(" · ")
+                    : "Sem cidades"}
+                </p>
+              </li>
+            ))}
+          </ul>
+        )}
+      </section>
+
       {extras.length > 0 ? (
         <div className="sheet-vps mt-4 divide-y divide-neutral-100">
           {extras.map((item) => (
@@ -1160,6 +1601,29 @@ function ExpedicaoIcon() {
         stroke="white"
         strokeWidth="2.4"
         strokeLinejoin="round"
+      />
+    </svg>
+  )
+}
+
+function RotaIcon() {
+  return (
+    <svg viewBox="0 0 48 48" className="h-8 w-8 lg:h-9 lg:w-9" aria-hidden="true">
+      <path
+        d="M12 36c4-8 8-12 12-12s8 4 12 12"
+        fill="none"
+        stroke="white"
+        strokeWidth="2.4"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+      <circle cx="24" cy="18" r="6" fill="none" stroke="white" strokeWidth="2.4" />
+      <path
+        d="M24 12v2M18 18h-2M32 18h2"
+        fill="none"
+        stroke="white"
+        strokeWidth="2.4"
+        strokeLinecap="round"
       />
     </svg>
   )
