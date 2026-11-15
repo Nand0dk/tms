@@ -1067,10 +1067,17 @@ async function ensureUserColumns(db) {
     (await db.all("PRAGMA table_info(users)")).map((column) => column.name),
   )
   for (const area of areas) {
-    if (!columns.has(area)) {
+    if (columns.has(area)) continue
+    try {
       await db.raw.execute(
         `ALTER TABLE users ADD COLUMN ${area} INTEGER NOT NULL DEFAULT 0`,
       )
+      columns.add(area)
+    } catch (error) {
+      const message = String(error?.message || error)
+      // Turso/SQLite: coluna já existe (corrida ou schema antigo).
+      if (!/duplicate column|already exists/i.test(message)) throw error
+      columns.add(area)
     }
   }
 }

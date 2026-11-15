@@ -27,7 +27,17 @@ async function request<T>(path: string, body?: unknown): Promise<T> {
     headers: body === undefined ? undefined : { "content-type": "application/json" },
     body: body === undefined ? undefined : JSON.stringify(body),
   })
-  const data = (await response.json()) as T & { error?: string }
+  const raw = await response.text()
+  let data: T & { error?: string }
+  try {
+    data = (raw ? JSON.parse(raw) : {}) as T & { error?: string }
+  } catch {
+    throw new Error(
+      response.status === 404
+        ? "A API não foi encontrada neste endereço. Verifique o deploy na Vercel."
+        : "O servidor respondeu com uma página inválida em vez de JSON.",
+    )
+  }
   if (!response.ok) {
     throw new Error(data.error || "Não foi possível salvar no banco de dados.")
   }

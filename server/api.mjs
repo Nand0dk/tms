@@ -78,16 +78,21 @@ function normalizePath(pathname) {
   return path
 }
 
+function pathPartsFromQuery(req) {
+  const path = req.query?.path
+  return (Array.isArray(path) ? path : typeof path === "string" ? [path] : [])
+    .flatMap((part) => String(part).split("/"))
+    .filter(Boolean)
+}
+
 function requestPath(req) {
+  // Vercel rewrite /api/(.*) -> /api?path=$1 (multi-segment routes).
+  const fromQuery = pathPartsFromQuery(req)
+  if (fromQuery.length > 0) return normalizePath(`/api/${fromQuery.join("/")}`)
+
   const url = new URL(req.url ?? "/", "http://local")
   let pathname = normalizePath(url.pathname)
-  if (!pathname.startsWith("/api")) {
-    const path = req.query?.path
-    const parts = (Array.isArray(path) ? path : typeof path === "string" ? [path] : [])
-      .flatMap((part) => String(part).split("/"))
-      .filter(Boolean)
-    if (parts.length > 0) pathname = normalizePath(`/api/${parts.join("/")}`)
-  }
+  if (pathname === "/api/[...path]" || pathname === "/api/index") pathname = "/api"
   return pathname
 }
 
